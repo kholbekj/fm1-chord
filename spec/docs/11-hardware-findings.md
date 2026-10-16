@@ -172,6 +172,20 @@ OCT- / OCT+ move them with the chords. The other modes (SEQ, DRUM, the games, th
 keys as they were. The HOME legend marks the plate keys with a bar that rises with the note.
 chordmachine.c: hc_plate_of_key / hc_plate_note / hc_plate_on, tested in chordmachine_test plate().
 
+## The SDK port begins (2026-10-16)
+
+M-VAVE published the FM1 Open release (m-vave/fm1_open): the app layer under GPL-3.0 with a linking
+exception over a binary SDK (RTOS, USB, the Bluetooth stack with BLE MIDI as peripheral or central and
+Bluetooth audio in, the stock synth) that may be linked and redistributed for FM-1 devices. The only
+route to the radio. `port/` builds an app against it with JieLi's Linux toolchain: the rebuild of the
+unmodified official app is byte-identical to M-VAVE's package but for the 32-byte build identity, so
+the toolchain and the Python packager are exact. The port app (`port/app/screen.c`: our chord keys and
+HOME over the stock instrument, notes posted as MIDI into track 1) builds and passes the structural
+checks; a host harness drives it. Not flashed: the Open package replaces the bootloader (its uboot
+shares 18 % of its bytes with V15's), Felucca's installer refuses it without --force, and the way back
+from the Open updater is untested; the data flash (0x93000..0xFFFFF, 15 sectors in use) was backed up
+over the console first and the Felucca build gained `fle` / `flw` to restore it.
+
 ## LEAD is a scale keyboard (owner's request, 2026-10-09)
 
 First the display: in LEAD the HOME screen kept naming the chord and drawing all its notes while

@@ -243,6 +243,42 @@ static void con_flr(const char *p)                  /* flash read over SPI (no X
 }
 #endif
 
+#if FELUCCA_FLASH
+/* a backup's restore (fm1-chord): fle OFFSET erases one 4 KiB sector of the data area, flw OFFSET HEXBYTES
+ * programs up to 64 bytes into erased flash (the bytes raw, as flr reads them) */
+static void con_fle(const char *p)
+{
+    int ok;
+    uint32_t a = con_num(&p, &ok);
+    if (!ok || a < 0x93000u || a >= 0x100000u || a % 4096u) {
+        con_puts("usage: fle OFFSET   (a 4 KiB sector, 0x93000..0xFF000)\r\n");
+        return;
+    }
+    con_puts(!flash_ok || st_erase(a) ? "erase failed\r\n" : "erased\r\n");
+}
+static int con_xdig(char c)
+{
+    return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+}
+static void con_flw(const char *p)
+{
+    static uint8_t b[64];
+    int ok;
+    uint32_t a = con_num(&p, &ok), n = 0;
+    while (*p == ' ')
+        p++;
+    while (n < 64u && con_xdig(p[0]) >= 0 && con_xdig(p[1]) >= 0) {
+        b[n++] = (uint8_t)(con_xdig(p[0]) << 4 | con_xdig(p[1]));
+        p += 2;
+    }
+    if (!ok || !n || a < 0x93000u || a + n > 0x100000u) {
+        con_puts("usage: flw OFFSET HEXBYTES   (<= 64 bytes, 0x93000..0xFFFFF, erased first)\r\n");
+        return;
+    }
+    con_puts(!flash_ok || st_prog(a, b, n) ? "write failed\r\n" : "written\r\n");
+}
+#endif
+
 #if FELUCCA_UAC
 static void con_uac(void)                              /* USB audio input: stream state and glitches */
 {
@@ -434,6 +470,10 @@ static void con_exec(const char *p)
 #if FELUCCA_FLASH
     else if (con_word(&p, "flr"))
         con_flr(p);
+    else if (con_word(&p, "fle"))
+        con_fle(p);
+    else if (con_word(&p, "flw"))
+        con_flw(p);
 #endif
     else if (con_word(&p, "hc"))
         con_hc(p);

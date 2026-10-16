@@ -47,6 +47,15 @@ jobs:
       - name: Host tests
         run: sh tests/run_tests.sh
 
+      - name: "SDK port: the official FM1 Open app rebuilt, then ours over it, then its host test"
+        run: |
+          git clone -q --depth 1 https://github.com/m-vave/fm1_open "$HOME/fm1/fm1_open"
+          sh port/build.sh | tail -3
+          sh port/build.sh port/app | tail -3
+          cc -O1 -w -DFM1_HOST_TEST -Iport/tests -I"$HOME/fm1/fm1_open/sdk/include" -I"$HOME/fm1/fm1_open/app" \
+             -I"$HOME/fm1/fm1_open/app/synth" -Ifirmware/src -o build/host/port_test port/tests/port_test.c
+          build/host/port_test
+
       - name: Build (release)
         if: steps.ver.outputs.rel != ''
         run: ./build.sh --release "${{ steps.ver.outputs.rel }}"

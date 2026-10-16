@@ -235,4 +235,13 @@ else
     echo "== skip web tests (no node)"
 fi
 
+FM1_OPEN="${FM1_OPEN:-$HOME/fm1/fm1_open}"
+if [ -f "$FM1_OPEN/sdk/include/fm1.h" ]; then
+    $CC -O1 -w -DFM1_HOST_TEST -Iport/tests -I"$FM1_OPEN/sdk/include" -I"$FM1_OPEN/app" -I"$FM1_OPEN/app/synth" \
+        -Ifirmware/src -o "$OUT/port_test" port/tests/port_test.c
+    run "SDK port (port/app over m-vave/fm1_open): the chord keys and HOME on the host" "$OUT/port_test"
+else
+    echo "== skip the SDK port test (no m-vave/fm1_open checkout at $FM1_OPEN)"
+fi
+
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }
