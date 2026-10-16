@@ -124,6 +124,71 @@ static void text_c(unsigned cx, unsigned y, const char *s, unsigned scale, uint1
     text(cx > w / 2 ? cx - w / 2 : 0, y, s, scale, color, background);
 }
 
+/* ------------------------------------------------------------------ our fonts (gen_font.py) --- */
+#include "gen/fonts.h"
+static const pf_glyph_t *pf_glyph(const pf_font_t *f, char c)
+{
+    uint32_t i = (uint8_t)c;
+    if (i < f->first || i >= f->first + (uint32_t)f->count)
+        return NULL;
+    return &f->g[i - f->first];
+}
+static uint32_t pf_width(const pf_font_t *f, const char *s)
+{
+    uint32_t w = 0;
+    for (; *s; s++) {
+        const pf_glyph_t *g = pf_glyph(f, *s);
+        w += g ? g->adv : f->size / 3u;
+    }
+    return w;
+}
+static uint16_t pf_blend(uint16_t bg, uint16_t fg, uint32_t a)   /* a: 0..15 of fg over bg */
+{
+    uint32_t rb = ((uint32_t)(bg & 0xF81Fu) * (16u - a) + (uint32_t)(fg & 0xF81Fu) * a) >> 4;
+    uint32_t g = ((uint32_t)(bg & 0x07E0u) * (16u - a) + (uint32_t)(fg & 0x07E0u) * a) >> 4;
+    return (uint16_t)((rb & 0xF81Fu) | (g & 0x07E0u));
+}
+/* text with its baseline at y, blended over what the band holds (the fills before it) */
+static void pf_text(const pf_font_t *f, int32_t x, int32_t y, const char *s, uint16_t color)
+{
+    if (!paint_rendering) {
+        int32_t top = clamp(y - f->ascent - 2, 0, 239), x0 = clamp(x, 0, 239);
+        int32_t w = clamp((int32_t)pf_width(f, s) + 4, 1, 240 - x0), h = clamp(f->size + 8, 1, 240 - top);
+        paint_mark((unsigned)x0, (unsigned)top, (unsigned)w, (unsigned)h);
+        return;
+    }
+    for (; *s; s++) {
+        const pf_glyph_t *g = pf_glyph(f, *s);
+        int32_t row, col;
+        if (!g) {
+            x += f->size / 3;
+            continue;
+        }
+        for (row = 0; row < g->h; row++) {
+            int32_t py = y - g->top + row;
+            if (py < (int32_t)paint_top || py >= (int32_t)(paint_top + PAINT_ROWS))
+                continue;
+            for (col = 0; col < g->w; col++) {
+                int32_t px = x + g->left + col;
+                uint32_t idx = (uint32_t)(row * g->w + col), a;
+                if (px < (int32_t)paint_x || px >= (int32_t)paint_end)
+                    continue;
+                a = f->px[g->off + idx / 2u];
+                a = idx & 1u ? a & 15u : a >> 4;
+                if (a) {
+                    uint16_t *q = &paint_pixels[(py - (int32_t)paint_top) * (int32_t)(paint_end - paint_x) + px - (int32_t)paint_x];
+                    *q = a == 15u ? color : pf_blend(*q, color, a);
+                }
+            }
+        }
+        x += g->adv;
+    }
+}
+static void pf_text_c(const pf_font_t *f, int32_t cx, int32_t y, const char *s, uint16_t color)
+{
+    pf_text(f, cx - (int32_t)pf_width(f, s) / 2, y, s, color);
+}
+
 /* ------------------------------------------------------------------ the instrument --- */
 enum { HP_PLAY, HP_LEAD, HP_COUNT };
 enum { HB_OFF, HB_ROOT, HB_SLASH };
@@ -425,13 +490,13 @@ static void draw(void)
     str_cpy(b, HN_SHARP[S.key % 12u], sizeof b);
     str_cpy(b + str_len(b), " ", sizeof b - str_len(b));
     str_cpy(b + str_len(b), SCALE_NAME[S.scale % NSCALE], sizeof b - str_len(b));
-    text(4, 4, b, 2, RGB(20, 20, 22), GREY);
+    pf_text(&PF_M, 6, 16, b, RGB(20, 20, 22));
     paint_fill(122, 0, 60, 22, RGB(226, 62, 62));
-    text_c(152, 4, MODE_NAME[S.mode % HP_COUNT], 2, TEXT, RGB(226, 62, 62));
+    pf_text_c(&PF_M, 152, 16, MODE_NAME[S.mode % HP_COUNT], TEXT);
     fm1_ble_get_status(&ble);
     {
         static const char *const BLE[] = {"BT OFF", "BT IDLE", "BT ADV", "BT SCAN", "BT CONN", "BT DISC", "BT LINK", "BT OK", "BT END"};
-        text(188, 8, BLE[ble.state < 9u ? ble.state : 0], 1, ble.state == FM1_BLE_READY ? RGB(70, 200, 120) : DIM, BACK);
+        pf_text(&PF_S, 188, 15, BLE[ble.state < 9u ? ble.state : 0], ble.state == FM1_BLE_READY ? RGB(70, 200, 120) : DIM);
     }
     /* the chord, big; its degree and direction under it */
     for (i = 0; i < NKEY; i++)
@@ -449,12 +514,15 @@ static void draw(void)
                 b[str_len(b)] = (char)('0' + (x / 12u > 0u ? x / 12u - 1u : 0u));
                 n++;
             }
-        text_c(120, 44, b[0] ? b : "LEAD", b[0] ? (n > 1u ? 3u : 4u) : 2u, col, BACK);
+        if (!b[0])
+            pf_text_c(&PF_M, 120, 70, "LEAD", DIM);
+        else
+            pf_text_c(n > 2u ? &PF_M : &PF_X, 120, 72, b, col);
         if (n == 1u && S.cur_deg < 7u)
-            text_c(120, 86, DEG_NAME[S.cur_deg], 2, MID, BACK);
+            pf_text_c(&PF_M, 120, 102, DEG_NAME[S.cur_deg], MID);
     } else if (S.cur.n && (any || S.name[0])) {
-        uint32_t len = str_len(S.name), scale = len <= 5u ? 4u : len <= 7u ? 3u : 2u;
-        text_c(120, 40, S.name, scale, any ? col : MID, BACK);
+        uint32_t len = str_len(S.name);
+        pf_text_c(len <= 7u ? &PF_X : &PF_M, 120, 72, S.name, any ? col : MID);
         str_cpy(b, DEG_NAME[S.cur_deg % 7u], sizeof b);
         if (S.dir != HD_NONE) {
             str_cpy(b + str_len(b), "  ", sizeof b - str_len(b));
@@ -463,12 +531,12 @@ static void draw(void)
         if (S.inv[S.cur_key]) {
             str_cpy(b + str_len(b), S.inv[S.cur_key] == 1u ? "  1ST INV" : "  2ND INV", sizeof b - str_len(b));
         }
-        text_c(120, 86, b, 2, MID, BACK);
+        pf_text_c(&PF_M, 120, 102, b, MID);
     } else {
-        text_c(120, 60, "PLAY A WHITE KEY", 2, DIM, BACK);
+        pf_text_c(&PF_M, 120, 76, "PLAY A WHITE KEY", DIM);
     }
     if (S.hold)
-        paint_fill(8, 84, 46, 18, RGB(70, 200, 120)), text(13, 89, "HOLD", 1, RGB(20, 20, 22), RGB(70, 200, 120));
+        paint_fill(8, 88, 46, 18, RGB(70, 200, 120)), pf_text(&PF_S, 14, 102, "HOLD", RGB(20, 20, 22));
     /* the keyboard: 16 white keys, 11 black, the held ones lit; the degrees numbered, the plate's bars */
     {
         const int32_t ww = 14, x0 = 4, ky = 112, kh = 66;
@@ -482,7 +550,7 @@ static void draw(void)
                     uint32_t d;
                     if (S.mode == HP_LEAD) lead_note(i, &d); else d = p;
                     b[0] = (char)('1' + d % 7u); b[1] = 0;
-                    text((unsigned)x + 4, ky + 50, b, 1, on ? RGB(20, 20, 22) : MID, fill);
+                    pf_text(&PF_S, x + 4, ky + 58, b, on ? RGB(20, 20, 22) : MID);
                     if (S.mode != HP_LEAD)
                         paint_fill((unsigned)x + 3, ky + kh - 4, (unsigned)ww - 6, 3, DEG_COL[p]);
                 } else {
@@ -498,13 +566,13 @@ static void draw(void)
                 paint_fill((unsigned)x, ky, 9, 40, on ? (p < 3u ? RGB(70, 200, 120) : RGB(245, 196, 0)) : RGB(90, 94, 104));
                 if (p < 3u) {
                     b[0] = "ILH"[p]; b[1] = 0;
-                    text((unsigned)x + 2, ky + 14, b, 1, on ? RGB(20, 20, 22) : MID, on ? (p < 3u ? RGB(70, 200, 120) : RGB(245, 196, 0)) : RGB(90, 94, 104));
+                    pf_text(&PF_S, x + 2, ky + 24, b, on ? RGB(20, 20, 22) : MID);
                 }
             }
     }
     /* the sound and the hints */
-    text(4, 190, S.program, 2, RGB(245, 196, 0), BACK);
-    text(4, 222, "SCL SCALE  OCT-/+  SELECT KEY  ALGO MODE  PRESET SND", 1, DIM, BACK);
+    pf_text(&PF_M, 6, 200, S.program, RGB(245, 196, 0));
+    pf_text(&PF_S, 6, 232, "SELECT key  ALGO mode  PRESETS sound", DIM);
 }
 static void paint_flush(void)
 {

@@ -21,7 +21,10 @@ FM-1's radio.
   FM-1_8000900. The harmony is `firmware/src/harmony.c`, shared with the Felucca build.
 - `tests/port_test.c`: the overlay on the host against stubs of the SDK (`FM1_HOST_TEST`): scripted
   keys, the MIDI posted and the screen painted checked, the screen written as a PPM (`home.png`: the
-  HOME screen after the test, in the stock app's 5 x 7 font for now).
+  HOME screen after the test).
+- `tools/gen_font.py` renders three sizes of `assets/fonts/InterTight[wght].ttf` (OFL) into
+  `app/gen/fonts.h` as 4-bit alpha glyphs (24 KB); `screen.c` blends them over the band it paints.
+  Felucca's canvas and fonts are not used.
 
 ![the port's HOME screen on the host](home.png)
 
