@@ -11,8 +11,9 @@
  *   the seven white keys at the left: the degrees (the first is the tonic); the nine at the right: the
  *   strumplate (PLAY) or, in LEAD, every white key one note of the scale up from the tonic
  *   black keys: F#3 INVERT, G#3 LOCK (unused yet), A#3 HOLD; C#4 .. F#5 the eight directions
- *   SELECT the key, ALGORITHM the mode (PLAY / LEAD), PRESETS the sound (the track's program),
- *   KNOB 1 the cutoff, SCL the scale, OCT- / OCT+ the octave */
+ *   SELECT the key, ALGORITHM the mode (PLAY / STRUM / LEAD / ARP: the instrument's own arpeggiator),
+ *   PRESETS the sound (the track's program), KNOB 1 the cutoff, KNOB 2 the level, KNOB 3 / 4 attack and
+ *   release, SCL the scale, OCT- / OCT+ the octave */
 #include "instrument.h"
 #include "fm_patch.h"
 #include "version.h"
@@ -190,7 +191,7 @@ static void pf_text_c(const pf_font_t *f, int32_t cx, int32_t y, const char *s, 
 }
 
 /* ------------------------------------------------------------------ the instrument --- */
-enum { HP_PLAY, HP_LEAD, HP_COUNT };
+enum { HP_PLAY, HP_STRUM, HP_LEAD, HP_ARP, HP_COUNT };
 enum { HB_OFF, HB_ROOT, HB_SLASH };
 #define NKEY 27u
 #define HC_BASE 48                                        /* the tonic key sounds C3 (the C4 key's pitch an octave down) */
@@ -203,7 +204,8 @@ static const uint16_t SCALE_MASK[NSCALE] = {              /* bit n = pitch class
     0xAB5, 0x5AD, 0x6AD, 0x6B5, 0xAD5, 0x5AB, 0x56B, 0x9AD, 0xAAD, 0x295};
 static const char *const DEG_NAME[7] = {"I", "II", "III", "IV", "V", "VI", "VII"};
 static const char *const DIR_NAME[9] = {"UP", "UP-RIGHT", "RIGHT", "DOWN-RIGHT", "DOWN", "DOWN-LEFT", "LEFT", "UP-LEFT", ""};
-static const char *const MODE_NAME[HP_COUNT] = {"PLAY", "LEAD"};
+static const char *const MODE_NAME[HP_COUNT] = {"PLAY", "STRUM", "LEAD", "ARP"};
+#define STRUM_GAP_MS 80u                                  /* the roll's spacing (MED) */
 static const uint8_t BLACK_FN[11] = {255, 254, 253, HD_UP, HD_UR, HD_RIGHT, HD_DR, HD_DOWN, HD_DL, HD_LEFT, HD_UL};   /* 255 INVERT 254 LOCK 253 HOLD */
 static const uint16_t DEG_COL[7] = {RGB(255, 92, 92), RGB(255, 160, 48), RGB(250, 220, 70), RGB(96, 214, 120),
                                     RGB(72, 200, 236), RGB(120, 128, 255), RGB(206, 112, 240)};
@@ -218,6 +220,7 @@ static struct {
     uint8_t order[NKEY], nheld;                           /* chord keys down, in press order (SLASH: the first is the bass) */
     struct { uint8_t n; uint8_t note[8]; } snd[NKEY];     /* the notes a key holds in the instrument */
     uint8_t plate[NKEY];                                  /* a plate key's note + 1 */
+    struct { uint8_t n, i; uint8_t note[8]; uint32_t due; } roll[NKEY];   /* STRUM: a key's notes still to come */
     hchord_t cur;                                         /* the chord last built */
     int32_t cur_root;
     uint8_t cur_q, cur_deg, cur_key;
@@ -427,7 +430,29 @@ static void key_down(uint32_t k)
     if (S.bass == HB_SLASH && S.nheld >= 2u && S.order[0] != k)   /* SLASH: the bass key's own chord stops */
         key_silence(S.order[0]);
     n = build(k, nn);
+    if (S.mode == HP_STRUM && n > 1u) {                    /* the first note now, the rest spaced */
+        uint32_t i;
+        S.roll[k].n = (uint8_t)n;
+        S.roll[k].i = 1;
+        for (i = 0; i < n; i++)
+            S.roll[k].note[i] = nn[i];
+        S.roll[k].due = fm1_millis() + STRUM_GAP_MS;
+        key_sound(k, nn, 1);
+        return;
+    }
+    S.roll[k].n = 0;
     key_sound(k, nn, n);
+}
+static void roll_tick(uint32_t now)                        /* STRUM: the next note of each roll that is due */
+{
+    uint32_t k;
+    for (k = 0; k < NKEY; k++)
+        if (S.roll[k].n && S.roll[k].i < S.roll[k].n && (int32_t)(now - S.roll[k].due) >= 0) {
+            key_sound(k, S.roll[k].note, ++S.roll[k].i);
+            S.roll[k].due = now + STRUM_GAP_MS;
+            if (S.roll[k].i >= S.roll[k].n)
+                S.roll[k].n = 0;
+        }
 }
 static void key_up(uint32_t k)
 {
@@ -457,6 +482,7 @@ static void key_up(uint32_t k)
     }
     order_remove(k);
     S.inv[k] = 0;
+    S.roll[k].n = 0;
     key_silence(k);
     if (S.bass == HB_SLASH && S.nheld && !S.snd[S.order[0]].n) {   /* the chord key let go, the bass key held: its own chord */
         uint8_t nn[8];
@@ -471,6 +497,7 @@ static void all_off(void)
         key_silence(k);
         S.plate[k] = 0;
         S.inv[k] = 0;
+        S.roll[k].n = 0;
     }
     S.nheld = 0;
     S.latched = 0;
@@ -663,6 +690,7 @@ void groove_screen_control(void)
         if ((down | up) & (1u << i))
             fm1_led_set(14u + i, (int)((c.keys >> i) & 1u));
     S.keys_prev = c.keys;
+    roll_tick(now);
     pressed = c.buttons & ~S.buttons_prev;
     S.buttons_prev = c.buttons;
     if (pressed & (1u << 3)) { all_off(); S.scale = (uint8_t)((S.scale + 1u) % NSCALE); }       /* SCL: the next scale */
@@ -670,7 +698,13 @@ void groove_screen_control(void)
     if (pressed & (1u << 1)) { all_off(); S.octave = (int8_t)clamp(S.octave + 1, -2, 2); }    /* OCT+ */
     if (pressed & (1u << 8)) { all_off(); }                                                   /* HOME: everything off */
     if (c.encoders[0]) { all_off(); S.key = (uint8_t)(((int32_t)S.key + c.encoders[0]) % 12 + 12) % 12u; }   /* SELECT: the key */
-    if (c.encoders[1]) { all_off(); S.mode = (uint8_t)(((int32_t)S.mode + c.encoders[1]) % HP_COUNT + HP_COUNT) % HP_COUNT; }
+    if (c.encoders[1]) {                                   /* ALGORITHM: the mode; ARP is the instrument's own arpeggiator */
+        all_off();
+        S.mode = (uint8_t)(((int32_t)S.mode + c.encoders[1]) % HP_COUNT + HP_COUNT) % HP_COUNT;
+        groove_arp_set(TRACK, S.mode == HP_ARP);
+    }
+    if (c.encoders[4]) { groove_adsr_enable(TRACK, 1); groove_adsr_edit(TRACK, 0, c.encoders[4] * 2); }   /* KNOB 3: attack */
+    if (c.encoders[5]) { groove_adsr_enable(TRACK, 1); groove_adsr_edit(TRACK, 3, c.encoders[5] * 2); }   /* KNOB 4: release */
     if (c.encoders[6]) { groove_control_edit(TRACK, c.encoders[6], 0, 0); program_refresh(); }   /* PRESETS: the sound */
     if (c.encoders[2]) { groove_control_edit(TRACK, 0, 0, c.encoders[2] * 4); }                 /* KNOB 1: the cutoff */
     if (c.encoders[3]) { groove_control_edit(TRACK, 0, c.encoders[3] * 2, 0); }                 /* KNOB 2: the track's volume */

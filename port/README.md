@@ -15,9 +15,11 @@ FM-1's radio.
   overlay directory, its files replace the official app's. Needs the `fm1_open` checkout at
   `~/fm1/fm1_open` (`FM1_OPEN`); `OUT_DIR` picks the output directory (default `build/port`).
 - `app/`: the overlay. `screen.c` replaces the official UI with the chord keys (the seven degrees at
-  the left, the strumplate, INVERT / HOLD, the eight directions, SLASH bass, PLAY and LEAD) and a HOME
-  screen; what the keys build plays as MIDI into the instrument's first track, so every stock sound is
-  a chord sound and BLE MIDI carries the notes out. `version.h` gives it the update identity
+  the left, the strumplate, INVERT / HOLD, the eight directions, SLASH bass; PLAY, STRUM, LEAD and
+  ARP, the last on the instrument's own arpeggiator) and a HOME screen; SELECT is the key, ALGORITHM
+  the mode, PRESETS the sound, KNOB 1 to 4 cutoff, level, attack and release, SCL the scale, OCT- /
+  OCT+ the octave. What the keys build plays as MIDI into the instrument's first track, so every
+  stock sound is a chord sound and BLE MIDI carries the notes out. `version.h` gives it the update identity
   FM-1_8000900. The harmony is `firmware/src/harmony.c`, shared with the Felucca build.
 - `tests/port_test.c`: the overlay on the host against stubs of the SDK (`FM1_HOST_TEST`): scripted
   keys, the MIDI posted and the screen painted checked, the screen written as a PPM (`home.png`: the

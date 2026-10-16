@@ -39,6 +39,10 @@ unsigned groove_settings_role_value(void) { return 0; }
 void groove_control_edit(unsigned t, int p, int v, int c) { (void)t; (void)p; (void)v; (void)c; }
 void groove_get_view(unsigned t, unsigned s, struct groove_view *v) { (void)t; (void)s; memset(v, 0, sizeof *v); v->type = GROOVE_DX7; v->program = 3; }
 const char *groove_fm_program_name(unsigned p) { (void)p; return "E.PIANO 1"; }
+static unsigned arp_on, adsr_edits;
+void groove_arp_set(unsigned t, unsigned on) { (void)t; arp_on = on; }
+void groove_adsr_enable(unsigned t, int on) { (void)t; (void)on; }
+void groove_adsr_edit(unsigned t, unsigned p, int d) { (void)t; (void)p; (void)d; adsr_edits++; }
 
 #include "../app/screen.c"
 
@@ -134,12 +138,28 @@ int main(int argc, char **argv)
     bad += check("HOLD: the chord stays after the key", S.hold && sounding(48) && sounding(52));
     press(5); release(5);
     bad += check("  HOLD off: it ends", !S.hold && !sounding(48));
-    turn(1, 1);                                       /* ALGORITHM: LEAD */
+    turn(1, 2);                                       /* ALGORITHM: LEAD (PLAY STRUM LEAD ARP) */
     bad += check("ALGORITHM: LEAD", S.mode == HP_LEAD);
     press(0); press(2);
     bad += check("  LEAD: the first two keys C4 and D4 together, one note each", sounding(60) && sounding(62) && !sounding(48));
     release(0); release(2);
-    turn(1, -1);
+    turn(1, -2);
+    turn(1, 3);                                       /* ARP: the instrument's arpeggiator on */
+    bad += check("ALGORITHM: ARP turns the track's arpeggiator on", S.mode == HP_ARP && arp_on == 1u);
+    turn(1, 1);                                       /* back to PLAY */
+    bad += check("  PLAY again: off", S.mode == HP_PLAY && arp_on == 0u);
+    turn(1, 1);                                       /* STRUM */
+    m0 = midi_n; press(0);
+    bad += check("STRUM: the first key: one note now (the bass C1), the rest to come", S.mode == HP_STRUM && ons_since(m0, nn) == 1 && nn[0] == 24);
+    tick(20);                                         /* 100 ms */
+    bad += check("  after 100 ms: the second (C3)", ons_since(m0, nn) == 2 && nn[1] == 48);
+    tick(40);                                         /* 300 ms */
+    bad += check("  after 300 ms: all four", ons_since(m0, nn) == 4 && sounding(55));
+    m0 = midi_n; release(0);
+    bad += check("  let go: all four end", offs_since(m0) == 4 && !sounding(24) && !sounding(55));
+    turn(1, -1);                                      /* PLAY */
+    turn(4, 1); turn(5, -1);
+    bad += check("KNOB 3 / 4: attack and release edits reach the instrument", adsr_edits == 2u);
     turn(0, 2);                                       /* SELECT: the key of D */
     press(0);
     bad += check("SELECT: the key of D: the first key plays D (D3 F#3 A3)", sounding(50) && sounding(54) && sounding(57) && str_eq_test(S.name, "D"));
