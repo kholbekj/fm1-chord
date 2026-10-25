@@ -318,10 +318,24 @@ static int test_draw_and_handover(void)
     bad += check("HOME held: Felucca's UI", !hui.on && ui.home);
     hframes(2);
     fm1_in.buttons |= 1u << panel.btn[B_HOME];
+    hframes(10);                                         /* (HOME down first, as a hand does: Felucca times it) */
     press(B_SAVE);
     fm1_in.buttons &= ~(1u << panel.btn[B_HOME]);
     hframes(2);
     bad += check("SAVE with HOME held: the chord machine UI again", hui.on);
+    hframes(2);
+    bad += check("back in the chord UI: Felucca keeps no HOME press and no menu", !ui.home_t0 && !ui.menu);
+    hold(B_HOME);                                        /* to Felucca and back a second time: no menu on top */
+    bad += check("HOME held again: Felucca's UI, on its plain screen", !hui.on && ui.home && !ui.menu);
+    bad += check("the way back is shown", str_eq(ui.msg, "HOME+SAVE: CHORDS") && ui.msg_t > 0u);
+    hframes(40);
+    bad += check("HOME let go: no tap, Felucca's menu stays closed", !ui.menu);
+    fm1_in.buttons |= 1u << panel.btn[B_HOME];
+    hframes(10);                                         /* (HOME down first, as a hand does: Felucca times it) */
+    press(B_SAVE);
+    fm1_in.buttons &= ~(1u << panel.btn[B_HOME]);
+    hframes(2);
+    bad += check("HOME + SAVE again: the chord machine UI", hui.on && !ui.menu);
     return bad;
 }
 

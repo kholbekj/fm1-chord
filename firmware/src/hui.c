@@ -103,10 +103,28 @@ static struct {
 } hui = {.on = HUI_DEFAULT, .rnd = 0x9E3779B9u};
 static int hui_active(void) { return hui.on; }
 static void hui_mode_set(track_t *t, uint32_t play);   /* below: the mode, with the drum engine swap */
+/* HOME is still down across a handover: the side taking over sees it as already held (a hold, done), so letting
+ * go is no tap and holding on fires nothing; the side left keeps no stale press */
+#define HUI_HELD_DONE(now) ((((now) | 1u) & ~3u) | 3u)
 static void hui_resume(void)
 {
     hui.on = 1;
     hui.force = 1;
+    hui.home_t0 = (fm1_in.buttons >> panel.btn[B_HOME]) & 1u ? HUI_HELD_DONE(fm1_ticks()) : 0u;
+    ui.home_t0 = 0;                                     /* (Felucca's UI: no HOME press left over) */
+    ui.menu = 0;                                        /* (back to Felucca later: its plain screen, no menu) */
+    lcd_fill(0, 0, 240, 240, T_BG);
+}
+/* HOME held: Felucca's own UI, on its plain screen, saying the way back for a moment */
+static void hui_to_felucca(void)
+{
+    hui.on = 0;
+    ui.home = 1;
+    ui.menu = 0;
+    ui.force = 1;
+    ui.home_t0 = HUI_HELD_DONE(fm1_ticks());           /* (HOME still down: no tap, no menu, when it goes up) */
+    ui_message("HOME+SAVE: CHORDS");
+    ui.msg_t = 130;                                     /* (~2 s) */
     lcd_fill(0, 0, 240, 240, T_BG);
 }
 
@@ -717,10 +735,7 @@ static void hui_input(void)
     hui_track_init(TSEL);
 #define DOWN(b) ((pressed >> panel.btn[b]) & 1u)
     if (home == BT_HOLD) {                               /* HOME held: Felucca's own UI */
-        hui.on = 0;
-        ui.home = 1;
-        ui.force = 1;
-        lcd_fill(0, 0, 240, 240, T_BG);
+        hui_to_felucca();
         return;
     }
     if (home == BT_TAP) {
