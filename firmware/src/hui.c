@@ -300,9 +300,15 @@ static void hui_track_init(track_t *t)
 
 /* ----------------------------------------------------- presets P1..P4 --- */
 /* a preset's own state packed into HC_PRESET_BYTES (settings_persist.c hc_presets): magic, the tracks' settings,
- * the key inversions and locks. Saving: the project slot (ui.c project_save: sounds, key, tempo, the Felucca
- * parameters) and this; loading: both, then hc_apply */
-#define HCP_MAGIC 0x48435033u                           /* "HCP3": hc_trk_t grew res */
+ * the key inversions (2 bits a key) and locks, MIDI IN and OUT LEVEL. Saving: the project slot (ui.c project_save:
+ * sounds, key, tempo, the Felucca parameters) and this; loading: both, then hc_apply. HCP3 (a byte an inversion)
+ * packed 262 bytes into the 256 of the record: the last 6 (the last two locks, MIDI IN, OUT LEVEL) were never
+ * stored, and read back as 0 */
+#define HCP_MAGIC 0x48435034u                           /* "HCP4": the inversions 2 bits a key */
+#define HCP3_MAGIC 0x48435033u
+#define HCP_INV_BYTES ((27u + 3u) / 4u)
+_Static_assert(4u + NTRK * sizeof(hc_trk_t) + HCP_INV_BYTES + 27u * 3u + 2u <= HC_PRESET_BYTES,
+               "a chord machine preset fits its record");
 static void hc_preset_pack(uint8_t *b)
 {
     uint32_t i, k = 4;
@@ -311,7 +317,8 @@ static void hc_preset_pack(uint8_t *b)
     for (i = 0; i < NTRK; i++, k += sizeof(hc_trk_t))
         memcpy(b + k, &hc.t[i], sizeof(hc_trk_t));
     for (i = 0; i < 27u; i++)
-        b[k++] = hc.inv[i];
+        b[k + i / 4u] |= (uint8_t)((hc.inv[i] % 3u) << (2u * (i % 4u)));
+    k += HCP_INV_BYTES;
     for (i = 0; i < 27u; i++) {
         b[k++] = hc.lock[i].on;
         b[k++] = hc.lock[i].q;
@@ -322,21 +329,25 @@ static void hc_preset_pack(uint8_t *b)
 }
 static int hc_preset_unpack(const uint8_t *b)
 {
-    uint32_t m, i, k = 4;
+    uint32_t m, i, k = 4, v3;
     memcpy(&m, b, 4);
-    if (m != HCP_MAGIC)
+    if (m != HCP_MAGIC && m != HCP3_MAGIC)
         return 0;
+    v3 = m == HCP3_MAGIC;
+#define HCP_AT(j) ((j) < HC_PRESET_BYTES ? b[j] : 0u)  /* (HCP3: past the record, 0) */
     for (i = 0; i < NTRK; i++, k += sizeof(hc_trk_t))
         memcpy(&hc.t[i], b + k, sizeof(hc_trk_t));
     for (i = 0; i < 27u; i++)
-        hc.inv[i] = (uint8_t)(b[k++] % 3u);
-    for (i = 0; i < 27u; i++) {
-        hc.lock[i].on = (uint8_t)(b[k++] & 1u);
-        hc.lock[i].q = (uint8_t)(b[k++] % HQ_COUNT);
-        hc.lock[i].roff = (int8_t)b[k++];
+        hc.inv[i] = (uint8_t)((v3 ? b[k + i] : b[k + i / 4u] >> (2u * (i % 4u)) & 3u) % 3u);
+    k += v3 ? 27u : HCP_INV_BYTES;
+    for (i = 0; i < 27u; i++, k += 3u) {
+        hc.lock[i].on = (uint8_t)(HCP_AT(k) & 1u);
+        hc.lock[i].q = (uint8_t)(HCP_AT(k + 1u) % HQ_COUNT);
+        hc.lock[i].roff = (int8_t)HCP_AT(k + 2u);
     }
-    hui.midi_in = b[k++] & 1u;
-    hui.out_line = b[k++] & 1u;
+    hui.midi_in = HCP_AT(k) & 1u;
+    hui.out_line = HCP_AT(k + 1u) & 1u;
+#undef HCP_AT
     return 1;
 }
 /* The live state across power-off, as the chord machine keeps its sound, effects, mode, inversions and locks

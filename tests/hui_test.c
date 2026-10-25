@@ -1093,11 +1093,57 @@ static int test_loop_kept(void)
     return bad;
 }
 
+/* the preset record: HCP4 fits its 256 bytes (a guard byte after it stays), an HCP3 record (a byte an inversion; its
+ * last 6 bytes were never stored) loads with those as 0 */
+static int test_preset_format(void)
+{
+    int bad = 0;
+    uint8_t b[HC_PRESET_BYTES + 1u], old[HC_PRESET_BYTES];
+    uint32_t i, k;
+    hui_power_on();
+    for (i = 0; i < 27u; i++) {
+        hc.inv[i] = (uint8_t)(i % 3u);
+        hc.lock[i].on = 1;
+        hc.lock[i].q = (uint8_t)(i % HQ_COUNT);
+        hc.lock[i].roff = (int8_t)(i - 13);
+    }
+    hui.midi_in = hui.out_line = 1;
+    b[HC_PRESET_BYTES] = 0xA5;
+    hc_preset_pack(b);
+    bad += check("HCP4: packed inside the record (the byte after it untouched)", b[HC_PRESET_BYTES] == 0xA5);
+    memset(hc.inv, 0, sizeof hc.inv);
+    memset(hc.lock, 0, sizeof hc.lock);
+    hui.midi_in = hui.out_line = 0;
+    {
+        int same = hc_preset_unpack(b) && hui.midi_in && hui.out_line;
+        for (i = 0; i < 27u; i++)
+            same = same && hc.inv[i] == i % 3u && hc.lock[i].on && hc.lock[i].q == i % HQ_COUNT && hc.lock[i].roff == (int8_t)(i - 13);
+        bad += check("HCP4: inversions, locks, MIDI IN and OUT LEVEL come back", same);
+    }
+    memset(old, 0, sizeof old);                          /* HCP3 as the firmware stored it: 256 of its 262 bytes */
+    memcpy(old, &(uint32_t){0x48435033u}, 4);
+    k = 4u + NTRK * (uint32_t)sizeof(hc_trk_t);
+    for (i = 0; i < 27u; i++)
+        old[k + i] = (uint8_t)((i + 1u) % 3u);
+    for (k += 27u, i = 0; i < 27u && k + 2u < HC_PRESET_BYTES; i++, k += 3u)
+        old[k] = 1, old[k + 1u] = 2, old[k + 2u] = 3;
+    hui.midi_in = hui.out_line = 1;
+    {
+        int same = hc_preset_unpack(old) && !hui.midi_in && !hui.out_line && !hc.lock[26].on;
+        for (i = 0; i < 27u; i++)
+            same = same && hc.inv[i] == (i + 1u) % 3u;
+        for (i = 0; i < 25u; i++)
+            same = same && hc.lock[i].on && hc.lock[i].q == 2u && hc.lock[i].roff == 3;
+        bad += check("HCP3: loads (inversions, the stored locks; the unstored tail 0)", same);
+    }
+    return bad;
+}
+
 int main(void)
 {
     int bad = test_slash_first_thing() + test_boot_and_menus() + test_key_menu() + test_sound_menu() + test_mix_menu() + test_mode_menu_knobs() + test_presets() +
               test_draw_and_handover() + test_looper() + test_seq_drums_mixer() + test_games() + test_live_persist() +
-              test_fx_amount() + test_drums_under_chords() + test_layers() + test_loop_kept() + test_footer_fits();
+              test_fx_amount() + test_drums_under_chords() + test_layers() + test_loop_kept() + test_footer_fits() + test_preset_format();
     printf("%s\n", bad ? "HUI TEST FAILED" : "chord machine ui test passed");
     return bad != 0;
 }
