@@ -15,13 +15,13 @@
  * hand over to hui_* while hui.on. */
 
 /* ------------------------------------------------------------ colours --- */
-#define HC_GREY RGB(150, 152, 160)
-#define HC_YELLOW RGB(245, 196, 0)
-#define HC_RED RGB(226, 62, 62)
-#define HC_GREEN RGB(70, 200, 120)
-#define HC_INK RGB(16, 16, 20)
-static const uint16_t HC_DEG_COL[7] = {RGB(255, 92, 92), RGB(255, 160, 48), RGB(250, 220, 70), RGB(96, 214, 120),
-                                       RGB(72, 200, 236), RGB(120, 128, 255), RGB(206, 112, 240)};   /* I .. vii */
+/* every colour from the palette (tools/gen_ui_palettes.py: the roles and the degrees), so a theme is one row there */
+#define HC_GREY T_ROLE(UR_KEY)
+#define HC_YELLOW T_ROLE(UR_SOUND)
+#define HC_RED T_ROLE(UR_MODE)
+#define HC_GREEN T_ROLE(UR_OK)
+#define HC_BLUE T_ROLE(UR_LOOP)
+#define HC_INK T_INK
 
 /* ------------------------------------------------------------ sounds --- */
 typedef struct { const char *name; uint8_t engine, preset, env; } hc_sound_t;
@@ -58,19 +58,19 @@ enum { HU_HOME, HU_KEY, HU_SOUND, HU_MODE, HU_PRESET, HU_LOOP, HU_PICK, HU_N }; 
 enum { RL_L1, RL_L2, RL_L3, RL_L4, RL_BARS, RL_METRO, RL_CLEAR, RL_N };   /* (RL_L1 + HCL_LAYERS - 1 = RL_L4) */
 enum { RK_KEY, RK_OCT, RK_SCALE, RK_LAYOUT, RK_JOY, RK_BASS, RK_VOICES, RK_VLEAD, RK_RANDOM, RK_N };
 enum { RS_SOUND, RS_ENV, RS_ATK, RS_REL, RS_FILT, RS_CUT, RS_RES, RS_HP, RS_REV, RS_DLY, RS_CHO, RS_FLG, RS_TREM, RS_LFO,
-       RS_GLIDE, RS_DRIVE, RS_TAPE, RS_STEREO, RS_SPK, RS_OUT, RS_MIDIIN, RS_RANDOM, RS_N };
+       RS_GLIDE, RS_DRIVE, RS_TAPE, RS_STEREO, RS_SPK, RS_OUT, RS_MIDIIN, RS_THEME, RS_RANDOM, RS_N };
 enum { RM_MODE, RM_BPM, RM_STRUM, RM_APAT, RM_ARATE, RM_ALAYER, RM_SEQLEN, RM_KIT, RM_DLSTYLE, RM_DLVAR, RM_SONG, RM_DIFF,
        RM_SPEED, RM_LEVEL, RM_RANDOM, RM_N };
-#define HC_BLUE RGB(80, 150, 255)
 static const char *const HU_TITLE[HU_N] = {"", "KEY", "SOUND", "MODE", "PRESETS", "LOOPER", ""};
-static const uint16_t HU_COL[HU_N] = {0, HC_GREY, HC_YELLOW, HC_RED, HC_GREEN, HC_BLUE, 0};
+static const uint8_t HU_ROLE[HU_N] = {0, UR_KEY, UR_SOUND, UR_MODE, UR_PRESET, UR_LOOP, 0};
+#define HU_COL(sc) T_ROLE(HU_ROLE[sc])
 static const uint8_t HU_ROWS[HU_N] = {0, RK_N, RS_N, RM_N, 4, RL_N, 0};
 static const char *const RL_LABEL[RL_N] = {"LAYER 1", "LAYER 2", "LAYER 3", "LAYER 4", "BARS", "METRONOME", "CLEAR ALL"};
 static const char *const RK_LABEL[RK_N] = {"KEY", "OCTAVE", "SCALE", "LAYOUT", "JOYSTICK", "BASS", "VOICES", "VOICE LEAD",
                                            "RANDOMIZE ALL"};
 static const char *const RS_LABEL[RS_N] = {"SOUND", "ENVELOPE", "ATTACK", "RELEASE", "FILTER WHEEL", "CUTOFF", "RESONANCE", "HI-PASS",
                                            "REVERB", "DELAY", "CHORUS", "FLANGER", "TREMOLO", "LFO", "GLIDE", "DRIVE", "TAPE",
-                                           "STEREO", "SPEAKER", "OUT LEVEL", "MIDI IN", "RANDOMIZE SOUND"};
+                                           "STEREO", "SPEAKER", "OUT LEVEL", "MIDI IN", "THEME", "RANDOMIZE SOUND"};
 static const char *const RM_LABEL[RM_N] = {"MODE", "TEMPO", "STRUM SPEED", "ARP PATTERN", "ARP RATE", "ARP LAYER",
                                            "SEQ LENGTH", "DRUM KIT", "LOOP STYLE", "LOOP VARIATION", "HIRO SONG", "DIFFICULTY",
                                            "PRACTICE SPEED", "EAR LEVEL", "RANDOMIZE PATTERN"};
@@ -432,6 +432,7 @@ static int hui_row_value(uint32_t screen, uint32_t row, char *b)
         case RS_STEREO: str_cpy(b, c->stereo ? "ON" : "OFF", 16); break;
         case RS_SPK: str_cpy(b, HC_SPK_NAME[settings.lowcut % 3u], 16); break;
         case RS_OUT: str_cpy(b, HC_OUT_NAME[hui.out_line & 1u], 16); break;
+        case RS_THEME: str_cpy(b, UI_PALETTES[settings.palette % NPALETTES].name, 16); break;
         case RS_MIDIIN: str_cpy(b, hui.midi_in ? "ON" : "OFF", 16); break;
         default: return 1;
         }
@@ -526,6 +527,14 @@ static void hui_row_change(uint32_t screen, uint32_t row, int32_t d)
         case RS_SPK: settings.lowcut = hui_cycle(settings.lowcut, d, 3); fx_lowcut = (uint8_t)settings.lowcut; break;
         case RS_OUT: hui.out_line = (uint8_t)!hui.out_line; hcfx.line = hui.out_line; break;
         case RS_MIDIIN: hui.midi_in = (uint8_t)!hui.midi_in; break;
+        case RS_THEME:                                   /* the palette: the whole screen again; saved with the
+                                                          * settings a moment later, as the sound is */
+            settings.palette = hui_cycle(settings.palette, d, NPALETTES);
+            palette_set(settings.palette);
+            hui.force = 1;
+            hui_live.dirty = 1;
+            hui_live.at_ms = fm1_ms;
+            return;
         default: hui_random_sound(); return;
         }
         break;
@@ -911,71 +920,101 @@ static uint32_t hui_fx_mask(const hc_trk_t *c)
            (c->filt ? 512u : 0u) | (c->hp ? 1024u : 0u) | (c->stereo ? 2048u : 0u);
 }
 
-/* the header: the key and scale (grey), the mode (red), the tempo, USB, the battery */
+/* a chip: a short word on a 16 px tile, r 3; filled (a state: INK on the colour) or outlined (a tag: the word in
+ * the colour). Its width */
+#define HU_CHIP_H 16
+static int32_t hui_chip_w(const char *s) { return text_w(&AF_S, s) + 10; }
+static int32_t hui_chip(int32_t x, int32_t y, const char *s, uint16_t col, int filled, uint16_t under)
+{
+    int32_t w = hui_chip_w(s);
+    cv_rrect(x, y, w, HU_CHIP_H, 3, col, under);
+    if (!filled)
+        cv_rrect(x + 1, y + 1, w - 2, HU_CHIP_H - 2, 2, under, col);
+    cv_text_c(x + w / 2, y + 1, &AF_S, s, filled ? T_INK : col, filled ? col : under);
+    return w;
+}
+
+/* a message over a header: centred on a surface band, a rule in the sound's colour under it */
+static void hui_draw_msg(void)
+{
+    cv_rect(0, 0, 240, HU_HEAD - 1, T_SURF);
+    cv_text_c(120, 3, &AF_M, hui.msg, T_TEXT, T_SURF);
+    cv_rect(0, HU_HEAD - 2, 240, 2, HC_YELLOW);
+}
+
+/* the header: the mode (a chip in the mode's colour), the key and scale, the octave shift; the tempo, USB, the
+ * battery at the right; a rule under it */
 static void hui_draw_head(void)
 {
     char b[24];
     const hc_trk_t *c = hui_c();
+    int32_t x;
     uint32_t sig = (uint32_t)TSEL->p[P_ROOT] * 3u + hui_scale_get() * 37u + c->play * 101u + (uint32_t)song.g[G_BPM] * 1009u +
                    (uint32_t)batt_shown() * 7777u + (usb.config && !usb.suspended) * 99991u + (hui.msg_t ? str_hash(5u, hui.msg) : 0u) +
-                   (uint32_t)(song.octave + 3) * 50021u;
+                   (uint32_t)(song.octave + 3) * 50021u + ux.gen * 7919u;
     if (!hui.force && sig == hui.sig[0])
         return;
     hui.sig[0] = sig;
     cv_begin(240, HU_HEAD, T_BG);
     if (hui.msg_t) {
-        cv_rrect(0, 0, 240, HU_HEAD, 0, HC_YELLOW, T_BG);
-        cv_text_c(120, 4, &AF_M, hui.msg, HC_INK, HC_YELLOW);
+        hui_draw_msg();
         cv_blit(0, 0);
         return;
     }
-    cv_rrect(0, 0, 94, HU_HEAD, 0, HC_GREY, T_BG);      /* the key */
-    str_cpy(b, HC_NOTE_NAME[(uint32_t)TSEL->p[P_ROOT] % 12u], sizeof b);
+    x = 4 + hui_chip(4, 4, HP_SHORT[c->play % HP_COUNT], HC_RED, 1, T_BG) + 7;   /* the mode */
+    str_cpy(b, HC_NOTE_NAME[(uint32_t)TSEL->p[P_ROOT] % 12u], sizeof b);      /* the key */
     str_cpy(b + str_len(b), " ", sizeof b - str_len(b));
     str_cpy(b + str_len(b), HC_SCALE_NAME[hui_scale_get()], sizeof b - str_len(b));
-    cv_text_on(6, 4, &AF_M, b, HC_INK, HC_GREY);
-    if (song.octave) {
+    x = cv_text_on(x, 2, &AF_M, b, T_TEXT, T_BG) + 6;
+    if (song.octave) {                                   /* the octave shift: a tag */
         str_cpy(b, song.octave > 0 ? "+" : "", sizeof b);
         fmt_int(b + str_len(b), song.octave);
-        cv_text_r(91, 6, &AF_S, b, HC_INK, HC_GREY);
+        hui_chip(x, 4, b, HC_GREY, 0, T_BG);
     }
-    cv_rrect(96, 0, 52, HU_HEAD, 0, HC_RED, T_BG);      /* the mode */
-    cv_text_c(122, 4, &AF_M, HP_SHORT[c->play % HP_COUNT], RGB(255, 240, 240), HC_RED);
-    fmt_int(b, song.g[G_BPM]);
-    cv_text_on(152, 4, &AF_M, b, T_TEXT, T_BG);          /* the tempo, the USB icon and the battery 8 px apart */
+    fmt_int(b, song.g[G_BPM]);                           /* the tempo, the USB icon and the battery */
+    cv_text_r(cv_text_r(192, 5, &AF_S, "BPM", T_MID, T_BG) - 3, 2, &AF_M, b, T_TEXT, T_BG);
     if (usb.config && !usb.suspended)
         cv_icon_mid(198, HU_HEAD / 2, 16, ICON_X_USB, T_MID, T_BG);
     draw_battery(214);
+    cv_rect(4, HU_HEAD - 1, 232, 1, T_LINE);
     cv_blit(0, 0);
+}
+
+typedef struct { uint32_t kc; const char *act, *alt; uint16_t fill, ink; } hint_t;
+static const char *hint_word(const hint_t *h, uint32_t pass, uint32_t i)
+{
+    (void)i;
+    if (pass >= 2u && h->kc == KC_HOME)
+        return "";
+    return pass ? h->alt : h->act;
 }
 
 /* the footer: the four menu buttons, coloured (HOME); a menu's hints */
 static void hui_draw_foot(void)
 {
     uint32_t sig = hui.screen * 7u + 1u + (hui.screen == HU_SOUND && hui_fx_row(hui.sel[HU_SOUND]) ? 3u : 0u) +
-                   (hui.screen == HU_PICK ? hui.pick_kind * 11u + hui.pick_sticky * 13u : 0u);
+                   (hui.screen == HU_PICK ? hui.pick_kind * 11u + hui.pick_sticky * 13u : 0u) + ux.gen * 7919u;
     if (!hui.force && sig == hui.sig[3])
         return;
     hui.sig[3] = sig;
     cv_begin(240, 240 - HU_FOOT_Y, T_BG);
     {   /* keycaps and their actions, spread over the width; shorter words when the long ones do not fit */
-        typedef struct { uint32_t kc; const char *act, *alt; uint16_t fill, ink; } hint_t;
         hint_t h[5];
         uint32_t n = 0, i, pass;
         if (hui.screen == HU_HOME) {
             h[n++] = (hint_t){KC_SCL, "KEY", "KEY", HC_GREY, HC_INK};
             h[n++] = (hint_t){KC_FX, "SOUND", "SND", HC_YELLOW, HC_INK};
             h[n++] = (hint_t){KC_EDIT, "MODE", "MODE", HC_RED, HC_INK};         /* (dark on red: the panel LCD washes white out) */
-            h[n++] = (hint_t){KC_SAVE, "PRESET", "PRE", HC_GREEN, HC_INK};
+            h[n++] = (hint_t){KC_SAVE, "PRESET", "PRE", T_ROLE(UR_PRESET), HC_INK};
         } else if (hui.screen == HU_PRESET) {
             h[n++] = (hint_t){KC_SELECT, "SLOT", "SLOT", T_KEY, T_INK};
             h[n++] = (hint_t){KC_OCTUP, "LOAD", "LOAD", T_KEY, T_INK};
-            h[n++] = (hint_t){KC_SAVE, "SAVE", "SAVE", HC_GREEN, HC_INK};
+            h[n++] = (hint_t){KC_SAVE, "SAVE", "", T_ROLE(UR_PRESET), HC_INK};
             h[n++] = (hint_t){KC_HOME, "BACK", "BACK", T_KEY, T_INK};
         } else if (hui.screen == HU_LOOP) {
             h[n++] = (hint_t){KC_SELECT, "LAYER", "LAYR", T_KEY, T_INK};
-            h[n++] = (hint_t){KC_REC, "REC", "REC", HC_RED, HC_INK};
-            h[n++] = (hint_t){KC_PLAY, "PLAY", "PLAY", HC_GREEN, HC_INK};
+            h[n++] = (hint_t){KC_REC, "REC", "", T_REC, HC_INK};
+            h[n++] = (hint_t){KC_PLAY, "PLAY", "", HC_GREEN, HC_INK};
             h[n++] = (hint_t){KC_HOME, "BACK", "BACK", T_KEY, T_INK};
         } else if (hui.screen == HU_PICK) {
             h[n++] = (hint_t){KC_SELECT, "CHOOSE", "PICK", T_KEY, T_INK};
@@ -994,31 +1033,26 @@ static void hui_draw_foot(void)
         for (pass = 0; pass < 3u; pass++) {             /* the long words; the short ones; the short ones without
                                                           * HOME's (its keycap says BACK) */
             int32_t w = 0, x = 4, gap;
-            for (i = 0; i < n; i++) {
-                const char *a = pass ? h[i].alt : h[i].act;
-                if (pass == 2u && h[i].kc == KC_HOME)
-                    a = "";
-                w += kc_w(h[i].kc) + (a[0] ? 2 + text_w(&AF_S, a) : 0);
-            }
+            for (i = 0; i < n; i++)
+                w += kc_w(h[i].kc) + (hint_word(&h[i], pass, i)[0] ? 3 + text_w(&AF_S, hint_word(&h[i], pass, i)) : 0);
             gap = (232 - w) / (int32_t)(n - 1u);
-            if (gap < 2 && pass < 2u)
+            if (gap < 4 && pass < 2u)
                 continue;                                /* too wide: shorter */
-            if (gap > 12)
-                gap = 12;
-            if (gap < 1)
-                gap = 1;
+            if (gap > 14)
+                gap = 14;
+            if (gap < 2)
+                gap = 2;
             for (i = 0; i < n; i++) {
-                const char *a = pass ? h[i].alt : h[i].act;
-                if (pass == 2u && h[i].kc == KC_HOME)
-                    a = "";
-                x = cv_keycap(x, 5, h[i].kc, h[i].fill, h[i].ink, T_BG);
+                const char *a = hint_word(&h[i], pass, i);
+                x = cv_keycap(x, 6, h[i].kc, h[i].fill, h[i].ink, T_BG);
                 if (a[0])
-                    x = cv_text_on(x + 2, 4, &AF_S, a, T_MID, T_BG);   /* (on the keycap centre line, as cv_key_hint) */
+                    x = cv_text_on(x + 3, 5, &AF_S, a, T_MID, T_BG);   /* (on the keycap centre line, as cv_key_hint) */
                 x += gap;
             }
             break;
         }
     }
+    cv_rect(4, 0, 232, 1, T_LINE);
     cv_blit(0, HU_FOOT_Y);
 }
 
@@ -1036,13 +1070,13 @@ static void hui_draw_mode_body(void)
             int32_t x = 4 + (int32_t)(i % 4u) * 59, y = 4 + (int32_t)(i / 4u) * 30;
             int in = i < hcs.len, cur = i == hcs.cur, now = hcs.running && i == hcs.step;
             hchord_t ch;
-            uint16_t bg = !in ? T_BG : now ? HC_DEG_COL[hcs.st[i].deg % 7u] : T_SURF;
+            uint16_t bg = !in ? T_BG : now ? T_DEG(hcs.st[i].deg % 7u) : T_SURF;
             uint16_t fg = !in ? T_DIM : now ? HC_INK : T_TEXT;
-            cv_rrect(x, y, 56, 27, 5, bg, T_BG);
+            cv_rrect(x, y, 56, 27, 3, bg, T_BG);
             if (cur)
-                cv_rrect(x, y, 56, 27, 5, bg, T_BG), cv_frame(x, y, 56, 27, HC_RED);
+                cv_rrect(x, y, 56, 27, 3, T_ACCENT, T_BG), cv_rrect(x + 2, y + 2, 52, 23, 2, bg, T_ACCENT);
             if (in && hcs_step_chord(TSEL, i, &ch, b, 0))
-                cv_text_c(x + 28, y + 5, &AF_M, b, hcs.st[i].deg < 7u && !now ? HC_DEG_COL[hcs.st[i].deg] : fg, bg);
+                cv_text_c(x + 28, y + 5, &AF_M, b, hcs.st[i].deg < 7u && !now ? T_DEG(hcs.st[i].deg) : fg, bg);
             else if (in)
                 cv_text_c(x + 28, y + 7, &AF_S, "-", T_DIM, bg);
         }
@@ -1063,12 +1097,12 @@ static void hui_draw_mode_body(void)
             for (k = 0; k < 27u; k++)
                 if (!key_black(k) && key_place(k) % 7u == i && ((held >> k) & 1u))
                     on = 1;
-            cv_rrect(x, y, 56, 46, 6, on ? HC_DEG_COL[i] : T_SURF, T_BG);
-            cv_text_c(x + 28, y + 15, &AF_S, HC_PAD_NAME[i], on ? HC_INK : T_TEXT, on ? HC_DEG_COL[i] : T_SURF);
+            cv_rrect(x, y, 56, 46, 3, on ? T_DEG(i) : T_SURF, T_BG);
+            cv_text_c(x + 28, y + 15, &AF_S, HC_PAD_NAME[i], on ? HC_INK : T_TEXT, on ? T_DEG(i) : T_SURF);
         }
-        cv_rrect(181, 62, 56, 46, 6, hc.dir != HD_NONE ? HC_YELLOW : T_SURF, T_BG);
+        cv_rrect(181, 62, 56, 46, 3, hc.dir != HD_NONE ? HC_YELLOW : T_SURF, T_BG);
         cv_text_c(209, 68, &AF_S, "AUTO", hc.dir != HD_NONE ? HC_INK : T_MID, hc.dir != HD_NONE ? HC_YELLOW : T_SURF);
-        cv_text_c(209, 84, &AF_S, hc.dir != HD_NONE ? HR_NAME[hcd_rate_of_dir(hc.dir)] : "BLACK KEY", hc.dir != HD_NONE ? HC_INK : T_DIM,
+        cv_text_c(209, 84, &AF_S, hc.dir != HD_NONE ? HR_NAME[hcd_rate_of_dir(hc.dir)] : "OFF", hc.dir != HD_NONE ? HC_INK : T_DIM,
                   hc.dir != HD_NONE ? HC_YELLOW : T_SURF);
         cv_blit(0, HU_HEAD);
         cv_begin(240, 66, T_BG);
@@ -1083,21 +1117,21 @@ static void hui_draw_mode_body(void)
         for (i = 0; i < DL_STYLES; i++) {                /* the styles: four, then three */
             int32_t x = 4 + (int32_t)(i % 4u) * 59, y = 2 + (int32_t)(i / 4u) * 20;
             int on = i == c->dl_style;
-            cv_rrect(x, y, 56, 18, 5, on ? HC_RED : T_SURF, T_BG);
-            cv_text_c(x + 28, y + 3, &AF_S, DL_NAME[i], on ? RGB(255, 240, 240) : T_MID, on ? HC_RED : T_SURF);
+            cv_rrect(x, y, 56, 18, 3, on ? HC_RED : T_SURF, T_BG);
+            cv_text_c(x + 28, y + 3, &AF_S, DL_NAME[i], on ? T_INK : T_MID, on ? HC_RED : T_SURF);
         }
-        cv_rrect(181, 22, 56, 18, 5, hcs.dl_running ? HC_GREEN : T_SURF, T_BG);
+        cv_rrect(181, 22, 56, 18, 3, hcs.dl_running ? HC_GREEN : T_SURF, T_BG);
         cv_text_c(209, 25, &AF_S, hcs.dl_running ? "RUNNING" : "STOPPED", hcs.dl_running ? HC_INK : T_DIM, hcs.dl_running ? HC_GREEN : T_SURF);
         cv_text_on(4, 44, &AF_S, DV_NAME[c->dl_var % DV_VARS], HC_YELLOW, T_BG);
         for (j = 0; j < 6u; j++)
             for (i = 0; i < 16u; i++) {
                 uint32_t on = (hcd_lanes(c->dl_style, c->dl_var, i) >> j) & 1u, now = hcs.dl_running && i == hcs.dl_step;
                 int32_t x = 4 + (int32_t)i * 14, y = 60 + (int32_t)j * 10;
-                cv_rrect(x, y, 12, 8, 2, on ? (now ? T_TEXT : HC_DEG_COL[j]) : now ? T_RAISE : T_SURF, T_BG);
+                cv_rrect(x, y, 12, 8, 2, on ? (now ? T_TEXT : T_DEG(j)) : now ? T_RAISE : T_SURF, T_BG);
             }
         cv_blit(0, HU_HEAD);
         cv_begin(240, 66, T_BG);
-        cv_text_on(4, 2, &AF_S, "WHITE KEY: STYLE   MODE MENU: VARIATION", T_MID, T_BG);
+        cv_text_on(4, 2, &AF_S, "WHITE KEYS: STYLE   MODE MENU: VAR", T_MID, T_BG);
         cv_text_on(4, 22, &AF_M, "KIT", T_MID, T_BG);
         cv_text_on(40, 22, &AF_M, N_DRUM_KIT[c->kit % 4u], HC_RED, T_BG);
         hui_loop_strip(44);
@@ -1115,18 +1149,18 @@ static void hui_draw_mode_body(void)
             for (i = 0; i < 4u && hcg.idx + i < sg->n; i++) {   /* the chord due and the three after it */
                 uint32_t d = sg->ev[hcg.idx + i].deg, dir = sg->ev[hcg.idx + i].dir;
                 int32_t x = 4 + (int32_t)i * 59;
-                uint16_t bg = i ? T_SURF : (hcg.hit ? (hcg.last == HGR_MISS ? HC_RED : HC_GREEN) : HC_DEG_COL[d % 7u]);
+                uint16_t bg = i ? T_SURF : (hcg.hit ? (hcg.last == HGR_MISS ? HC_RED : HC_GREEN) : T_DEG(d % 7u));
                 str_cpy(b, HC_DEG_NAME[d % 7u], sizeof b);
                 if (dir == HD_UR) str_cpy(b + str_len(b), "7", sizeof b - str_len(b));
                 if (dir == HD_RIGHT) str_cpy(b + str_len(b), "M7", sizeof b - str_len(b));
-                cv_rrect(x, 20, 56, 40, 6, bg, T_BG);
+                cv_rrect(x, 20, 56, 40, 3, bg, T_BG);
                 cv_text_c(x + 28, 28, i ? &AF_M : &AF_L, b, i ? T_TEXT : HC_INK, bg);
             }
             if (hcg.running) {                           /* the beat coming: a bar fills up to the chord's time */
                 int32_t left = (int32_t)hcg.next_at - (int32_t)hcg.pos, full = (int32_t)(hcg_beat() * 4u);
                 int32_t w = left <= 0 ? 232 : left >= full ? 0 : 232 - left * 232 / full;
-                cv_rrect(4, 66, 232, 6, 2, T_LINE, T_BG);
-                cv_rrect(4, 66, w, 6, 2, HC_YELLOW, T_LINE);
+                cv_rrect(4, 66, 232, 3, 2, T_LINE, T_BG);
+                cv_rrect(4, 66, w, 3, 2, HC_YELLOW, T_LINE);
             }
             cv_text_on(4, 80, &AF_M, HGR_NAME[hcg.last % 5u], hcg.last == HGR_MISS ? HC_RED : HC_GREEN, T_BG);
             fmt_int(b, hcg.score);
@@ -1195,20 +1229,19 @@ static void hui_draw_mode_body(void)
         int32_t x = 4 + (int32_t)i * 59, lvl = trk[i].p[P_LEVEL];
         uint32_t st = hcl.l[i].state;
         int mute = trk[i].p[P_MUTE] != 0;
-        uint16_t col = st == HLS_PLAY ? HC_GREEN : st == HLS_REC ? HC_RED : T_MID;
-        cv_rrect(x, 4, 56, 116, 6, i == song.sel ? T_RAISE : T_SURF, T_BG);
+        uint16_t col = st == HLS_PLAY ? HC_GREEN : st == HLS_REC ? T_REC : T_MID;
+        cv_rrect(x, 4, 56, 116, 3, i == song.sel ? T_RAISE : T_SURF, T_BG);
         b[0] = 'L'; b[1] = (char)('1' + i); b[2] = 0;
         cv_text_c(x + 28, 8, &AF_M, b, col, i == song.sel ? T_RAISE : T_SURF);
         cv_rrect(x + 22, 30, 12, 60, 3, T_LINE, i == song.sel ? T_RAISE : T_SURF);
         cv_rrect(x + 22, 30 + 60 - lvl * 60 / 127, 12, lvl * 60 / 127, 3, mute ? T_DIM : HC_BLUE, T_LINE);
         cv_rrect(x + 6, 96, 44, 18, 4, mute ? HC_RED : T_LINE, i == song.sel ? T_RAISE : T_SURF);
-        cv_text_c(x + 28, 98, &AF_S, mute ? "MUTE" : HLS_NAME[st & 3u], mute ? RGB(255, 240, 240) : T_MID, mute ? HC_RED : T_LINE);
+        cv_text_c(x + 28, 98, &AF_S, mute ? "MUTE" : HLS_NAME[st & 3u], mute ? T_INK : T_MID, mute ? HC_RED : T_LINE);
     }
     cv_blit(0, HU_HEAD);
     cv_begin(240, 66, T_BG);
-    cv_text_on(4, 2, &AF_S, "KEYS 1-4 MUTE   KEY 7 METRO   OCT LEVEL", T_MID, T_BG);
-    cv_rrect(4, 24, 90, 18, 4, hcl.metro ? HC_GREEN : T_SURF, T_BG);
-    cv_text_c(49, 26, &AF_S, hcl.metro ? "METRONOME ON" : "METRONOME OFF", hcl.metro ? HC_INK : T_MID, hcl.metro ? HC_GREEN : T_SURF);
+    cv_text_on(4, 2, &AF_S, "KEYS 1-4 MUTE   7 METRO   OCT LEVEL", T_MID, T_BG);
+    hui_chip(4, 24, hcl.metro ? "METRONOME ON" : "METRONOME OFF", hcl.metro ? HC_GREEN : T_MID, hcl.metro, T_BG);
     cv_blit(0, HU_HEAD + 124);
 }
 
@@ -1223,10 +1256,10 @@ static void hui_loop_strip(int32_t y)
         bar = 1;
     for (i = 0; i < HCL_LAYERS; i++) {
         uint32_t s = hcl.l[i].state;
-        uint16_t col = s == HLS_PLAY ? HC_GREEN : s == HLS_REC ? HC_RED : s == HLS_ARMED ? HC_YELLOW : T_RAISE;
+        uint16_t col = s == HLS_PLAY ? HC_GREEN : s == HLS_REC ? T_REC : s == HLS_ARMED ? HC_YELLOW : T_RAISE;
         cv_rrect(4 + (int32_t)i * 12, y + 2, 9, 9, 4, col, T_BG);
         if (i == sel)
-            cv_rrect(6 + (int32_t)i * 12, y + 4, 5, 5, 2, s == HLS_OFF || s == HLS_ARMED ? T_TEXT : HC_INK, col);
+            cv_rrect(6 + (int32_t)i * 12, y + 4, 3, 5, 2, s == HLS_OFF || s == HLS_ARMED ? T_TEXT : HC_INK, col);
     }
     if (st == HLS_REC) {
         uint32_t el = hc.clock - hcl.l[sel].start;
@@ -1236,7 +1269,7 @@ static void hui_loop_strip(int32_t y)
         }
         str_cpy(b, "REC  BAR ", sizeof b);
         fmt_int(b + str_len(b), (int32_t)(el / bar) + 1);
-        cv_text_on(56, y, &AF_S, b, HC_RED, T_BG);
+        cv_text_on(56, y, &AF_S, b, T_REC, T_BG);
     } else {
         str_cpy(b, "LAYER ", sizeof b);
         fmt_int(b + str_len(b), (int32_t)sel + 1);
@@ -1248,9 +1281,9 @@ static void hui_loop_strip(int32_t y)
     if (total) {
         uint32_t bars = (total + bar / 2u) / bar;
         for (i = 1; i < bars && i < 32u; i++)
-            cv_rrect(4 + (int32_t)(i * 232u / bars), y + 14, 1, 6, 0, T_MID, T_BG);
+            cv_rrect(4 + (int32_t)(i * 232u / bars), y + 14, 1, 3, 0, T_MID, T_BG);
         cv_rrect(4, y + 15, 2 + (int32_t)((uint64_t)pos * 230u / total), 4, 1,
-                 st == HLS_REC ? HC_RED : hcl.playing ? HC_GREEN : T_MID, T_LINE);
+                 st == HLS_REC ? T_REC : hcl.playing ? HC_GREEN : T_MID, T_LINE);
     }
 }
 
@@ -1277,7 +1310,7 @@ static void hui_draw_piano(uint32_t deg)
 {
     static const uint8_t WHITE_OF[12] = {0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6};   /* the white key at or below */
     static const uint8_t IS_BLACK[12] = {0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0};
-    uint16_t col = deg < 7u ? HC_DEG_COL[deg] : HC_YELLOW, ccol;
+    uint16_t col = deg < 7u ? T_DEG(deg) : HC_YELLOW, ccol;
     uint32_t i, lo = 127, hi = 0, start, root = (uint32_t)(hc.cur.root + 1200) % 12u, held = fm1_in.notes | hc.latched;
     uint8_t on[128];                                     /* 1 a note of the chord, 2 a strumplate note */
     memset(on, 0, sizeof on);
@@ -1313,27 +1346,28 @@ static void hui_draw_piano(uint32_t deg)
         start = hi - 47u;
         start += (12u - start % 12u) % 12u;
     }
-    for (i = 0; i < 28u; i++)
-        cv_rrect(8 + (int32_t)i * 8, 2, 7, 66, 1, T_SURF, T_BG);
+    for (i = 0; i < 28u; i++)                            /* the white keys, raised; the black ones cut out of them */
+        cv_rrect(8 + (int32_t)i * 8, 2, 7, 66, 1, T_RAISE, T_BG);
     for (i = start; i < start + 48u && i < 128u; i++)
         if (on[i] && !IS_BLACK[i % 12u]) {
             int32_t x = 8 + (int32_t)((i - start) / 12u * 7u + WHITE_OF[i % 12u]) * 8;
-            uint16_t c = on[i] == 2u ? HC_INK : ccol;
+            uint16_t c = on[i] == 2u ? T_TEXT : ccol;
             cv_rrect(x, 2, 7, 66, 1, c, T_BG);
             if (on[i] == 1u && i % 12u == root)
-                cv_rrect(x + 2, 60, 3, 3, 1, HC_INK, c);
+                cv_rrect(x + 2, 60, 3, 3, 1, T_INK, c);
         }
     for (i = start; i < start + 48u && i < 128u; i++)
         if (IS_BLACK[i % 12u]) {
             int32_t x = 8 + (int32_t)((i - start) / 12u * 7u + WHITE_OF[i % 12u]) * 8 + 5;
-            uint16_t c = on[i] == 2u ? HC_INK : on[i] ? ccol : T_RAISE;
+            uint16_t c = on[i] == 2u ? T_TEXT : on[i] ? ccol : T_BG;
+            cv_rect(x - 1, 2, 7, 41, T_BG);
             cv_rrect(x, 2, 5, 40, 1, c, T_BG);
             if (on[i] == 1u && i % 12u == root)
-                cv_rrect(x + 1, 32, 3, 3, 1, HC_INK, c);
+                cv_rrect(x + 1, 32, 3, 3, 1, T_INK, c);
         }
     for (i = 0; i < 128u; i++)                           /* a note beyond the window: a dot at that edge */
         if (on[i] && (i < start || i >= start + 48u))
-            cv_rrect(i < start ? 2 : 234, 32, 4, 4, 2, on[i] == 2u ? HC_INK : ccol, T_BG);
+            cv_rrect(i < start ? 2 : 234, 32, 4, 4, 2, on[i] == 2u ? T_TEXT : ccol, T_BG);
 }
 
 /* HOME's middle: the chord big, its degree and modifier; the keyboard; the sound and the effects */
@@ -1409,7 +1443,7 @@ static void hui_draw_home(void)
     cv_begin(240, 98, T_BG);
     for (i = 0; i < HCL_LAYERS; i++) {                   /* the looper's layers: OFF dim, ARMED yellow, REC red, PLAY green */
         uint32_t st = hcl.l[i].state;
-        uint16_t c = st == HLS_PLAY ? HC_GREEN : st == HLS_REC ? HC_RED : st == HLS_ARMED ? HC_YELLOW : T_RAISE;
+        uint16_t c = st == HLS_PLAY ? HC_GREEN : st == HLS_REC ? T_REC : st == HLS_ARMED ? HC_YELLOW : T_RAISE;
         cv_rrect(8 + (int32_t)i * 14, 6, 10, 10, 5, c, T_BG);
         if (i == song.sel)
             cv_rrect(10 + (int32_t)i * 14, 8, 6, 6, 3, st == HLS_OFF || st == HLS_ARMED ? T_TEXT : HC_INK, c);
@@ -1419,7 +1453,7 @@ static void hui_draw_home(void)
         cv_rrect(8, 19, 2 + (int32_t)(hcl.pos * 50u / hcl.len), 3, 1, hcl.playing ? HC_GREEN : T_MID, T_LINE);
     }
     {
-        uint16_t col = deg < 7u ? HC_DEG_COL[deg] : T_THEME;
+        uint16_t col = deg < 7u ? T_DEG(deg) : T_THEME;
         int32_t w = text_w(&AF_X, name[0] ? name : "-");
         if (w > 232) {
             cv_text_c(120, 30, &AF_L, name, col, T_BG);
@@ -1442,9 +1476,9 @@ static void hui_draw_home(void)
             cv_text_c(120, 76, &AF_M, "PLAY A WHITE KEY", T_DIM, T_BG);
         }
         if (lock)
-            cv_rrect(170, 79, 56, 18, 5, HC_RED, T_BG), cv_text_c(198, 81, &AF_S, "LOCKED", RGB(255, 240, 240), HC_RED);
+            hui_chip(236 - hui_chip_w("LOCKED"), 80, "LOCKED", HC_RED, 1, T_BG);
         if (hc.hold)
-            cv_rrect(14, 79, 46, 18, 5, HC_GREEN, T_BG), cv_text_c(37, 81, &AF_S, "HOLD", HC_INK, HC_GREEN);
+            hui_chip(4, 80, "HOLD", HC_GREEN, 1, T_BG);
     }
     cv_blit(0, HU_HEAD);
     /* the keyboard: 16 white keys, 11 black, the held ones in their degree's colour, the directions dim */
@@ -1453,28 +1487,32 @@ static void hui_draw_home(void)
                                                                                            * sounds: the piano */
         hui_draw_piano(deg);
     } else {
-        int32_t ww = 14, x0 = 4;
+        int32_t ww = 13, x0 = 8;                        /* 16 white keys 14 apart, centred */
         for (i = 0; i < 27u; i++) {
             uint32_t p = key_place(i), on = (held >> i) & 1u;
             if (!key_black(i)) {
                 int32_t o, j = hc_plate_of_key(TSEL, i), x = x0 + (int32_t)p * (ww + 1);
                 uint32_t d = hc_degree_of_key(TSEL, i, &o) % 7u;
                 char dn[4] = {(char)('1' + d), 0};
+                uint16_t f = on ? T_DEG(d) : T_RAISE;
                 if (c->play == HP_LEAD) {                /* LEAD: every key its degree of the scale, 1 up */
                     uint32_t ld;
                     hc_lead_note(TSEL, i, &ld);
                     fmt_int(dn, (int32_t)ld + 1);
                     d = ld % 7u;
+                    f = on ? T_DEG(d) : T_RAISE;
                 }
                 if (j >= 0) {                            /* a strumplate key: a bar as high as its note */
                     int32_t h = 4 + j * 2;
-                    cv_rrect(x, 2, ww, 66, 2, on ? HC_INK : T_SURF, T_BG);
-                    cv_rrect(x + 4, 65 - h, ww - 8, h, 1, on ? T_BG : T_MID, on ? HC_INK : T_SURF);
+                    f = on ? T_TEXT : T_SURF;
+                    cv_rrect(x, 2, ww, 66, 2, f, T_BG);
+                    cv_rrect(x + 4, 64 - h, ww - 8, h, 1, on ? T_BG : T_DIM, f);
                     continue;
                 }
-                cv_rrect(x, 2, ww, 66, 2, on ? HC_DEG_COL[d] : T_SURF, T_BG);
-                cv_rrect(x + 3, 62, ww - 6, 3, 1, HC_DEG_COL[d], on ? HC_DEG_COL[d] : T_SURF);   /* the degree's colour */
-                cv_text_c(x + ww / 2, 44, &AF_S, dn, on ? HC_INK : T_MID, on ? HC_DEG_COL[d] : T_SURF);   /* its number */
+                cv_rrect(x, 2, ww, 66, 2, f, T_BG);
+                if (!on)
+                    cv_rrect(x + 3, 62, ww - 6, 3, 1, T_DEG(d), f);   /* the degree's colour */
+                cv_text_c(x + ww / 2 + 1, 44, &AF_S, dn, on ? T_INK : T_TEXT, f);   /* its number */
             }
         }
         for (i = 0; i < 27u; i++) {
@@ -1482,15 +1520,19 @@ static void hui_draw_home(void)
             if (key_black(i)) {
                 static const uint8_t AFTER[HC_NBLACK] = {0, 1, 2, 4, 5, 7, 8, 9, 11, 12, 14};   /* the white key it follows */
                 int32_t x = x0 + (int32_t)AFTER[p] * (ww + 1) + ww - 4;
-                uint16_t col = on ? (p < 3u ? HC_GREEN : HC_YELLOW) : T_RAISE;
-                cv_rrect(x, 2, 9, 40, 2, col, T_BG);
+                uint16_t col = on ? (p < 3u ? HC_GREEN : HC_YELLOW) : T_BG;
+                cv_rect(x - 1, 2, 11, 41, T_BG);         /* a gap round it */
+                if (!on)
+                    cv_rrect(x, 2, 9, 40, 2, T_LINE, T_BG), cv_rrect(x + 1, 2, 7, 39, 2, T_BG, T_LINE);
+                else
+                    cv_rrect(x, 2, 9, 40, 2, col, T_BG);
                 if (p < 3u) {                            /* INVERT LOCK HOLD */
                     char fl[2] = {"ILH"[p], 0};
-                    cv_text_c(x + 4, 14, &AF_S, fl, on ? HC_INK : T_MID, col);
+                    cv_text_c(x + 5, 14, &AF_S, fl, on ? T_INK : T_MID, col);
                 } else {                                 /* a joystick direction: the dot where it points */
                     static const int8_t DX[8] = {0, 1, 1, 1, 0, -1, -1, -1}, DY[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
                     uint32_t dir = HC_BLACK_FN[p] - HD_UP;
-                    cv_rrect(x + 3 + DX[dir % 8u] * 2, 20 + DY[dir % 8u] * 8, 3, 3, 1, on ? HC_INK : T_MID, col);
+                    cv_rrect(x + 3 + DX[dir % 8u] * 2, 20 + DY[dir % 8u] * 8, 3, 3, 1, on ? T_INK : T_MID, col);
                 }
             }
         }
@@ -1503,24 +1545,65 @@ static void hui_draw_home(void)
             int32_t x = 236;
             for (i = 12; i > 0; i--)
                 if ((fxm >> (i - 1u)) & 1u) {
-                    int32_t w = text_w(&AF_S, CHIP[i - 1u]) + 6;
-                    x -= w + 3;
-                    cv_rrect(x, 74, w, 15, 3, HC_YELLOW, T_BG);
-                    cv_text_c(x + w / 2, 75, &AF_S, CHIP[i - 1u], HC_INK, HC_YELLOW);
+                    x -= hui_chip_w(CHIP[i - 1u]) + 3;
+                    hui_chip(x, 74, CHIP[i - 1u], HC_YELLOW, 0, T_BG);
                 }
         }
     }
     cv_blit(0, HU_HEAD + 98);
 }
 
+/* a menu's or a list's title bar: the title on a chip in its colour, what it holds at the right, a rule */
+static void hui_title(const char *title, const char *sub, uint16_t col)
+{
+    cv_begin(240, HU_ROWS_Y, T_BG);
+    if (hui.msg_t) {
+        hui_draw_msg();
+    } else {
+        int32_t w = text_w(&AF_M, title) + 14;
+        cv_rrect(4, 3, w, 18, 3, col, T_BG);
+        cv_text_c(4 + w / 2, 2, &AF_M, title, T_INK, col);
+        cv_text_r(236, 4, &AF_S, sub, T_MID, T_BG);
+        cv_rect(4, HU_HEAD - 1, 232, 1, T_LINE);
+    }
+    cv_blit(0, 0);
+}
+
+/* a row of a menu or a list: the selected one on a surface, a stripe in the menu's colour at its left; the label
+ * (or a list's name) at the left, the value at the right */
+static void hui_row(int32_t y, const char *label, const char *val, int sel, int act, uint16_t col)
+{
+    uint16_t bg = sel ? T_SURF : T_BG;
+    if (sel) {
+        cv_rrect(4, y, 230, HU_ROW - 2, 3, bg, T_BG);
+        cv_rrect(4, y, 3, HU_ROW - 2, 1, col, bg);
+    }
+    if (!val) {                                          /* a list: the name alone, larger */
+        cv_text_on(14, y + 1, &AF_M, label, sel ? col : T_TEXT, bg);
+        return;
+    }
+    cv_text_on(14, y + 3, &AF_S, label, sel ? T_TEXT : T_MID, bg);
+    cv_text_r(226, y + 1, &AF_M, act ? "GO" : val, act ? (sel ? col : T_DIM) : sel ? col : T_TEXT, bg);
+}
+
+/* a scroll bar at the right edge when the rows do not all show */
+static void hui_scroll(uint32_t n, uint32_t top, uint16_t col)
+{
+    int32_t bar = HU_FOOT_Y - HU_ROWS_Y - 6, th = bar * HU_NROWS_SHOWN / (int32_t)n;
+    if (n <= HU_NROWS_SHOWN)
+        return;
+    cv_rrect(237, HU_ROWS_Y + 2, 2, bar, 1, T_LINE, T_BG);
+    cv_rrect(237, HU_ROWS_Y + 2 + (bar - th) * (int32_t)top / (int32_t)(n - HU_NROWS_SHOWN), 2, th, 1, col, T_LINE);
+}
+
 /* a menu: its rows, the selected one marked in the menu's colour */
 static void hui_draw_menu(void)
 {
-    uint32_t sc = hui.screen, nrows = HU_ROWS[sc], i, sig = sc * 3u + hui.sel[sc] * 17u, pass;
+    uint32_t sc = hui.screen, nrows = HU_ROWS[sc], i, sig = sc * 3u + hui.sel[sc] * 17u + ux.gen * 7919u, pass;
     char val[20];
     const char *const *labels = sc == HU_KEY ? RK_LABEL : sc == HU_SOUND ? RS_LABEL : sc == HU_MODE ? RM_LABEL :
                                 sc == HU_LOOP ? RL_LABEL : 0;
-    uint16_t col = HU_COL[sc];
+    uint16_t col = HU_COL(sc);
     if (hui.sel[sc] < hui.top[sc])
         hui.top[sc] = hui.sel[sc];
     if (hui.sel[sc] >= hui.top[sc] + HU_NROWS_SHOWN)
@@ -1540,9 +1623,8 @@ static void hui_draw_menu(void)
         cv_oy = -top;
         for (i = hui.top[sc]; i < nrows && i < hui.top[sc] + HU_NROWS_SHOWN; i++) {
             int32_t y = HU_ROWS_Y + (int32_t)(i - hui.top[sc]) * HU_ROW;
-            int sel = i == hui.sel[sc], act;
-            uint16_t bg = sel ? T_SURF : T_BG;
             char lb[20];
+            int act;
             if (y + HU_ROW <= top || y >= top + (int32_t)h)
                 continue;
             act = hui_row_value(sc, i, val);
@@ -1552,20 +1634,9 @@ static void hui_draw_menu(void)
             } else {
                 str_cpy(lb, labels[i], sizeof lb);
             }
-            cv_rrect(4, y, 232, HU_ROW - 2, 5, bg, T_BG);
-            if (sel)
-                cv_rrect(4, y, 5, HU_ROW - 2, 2, col, bg);
-            cv_text_on(16, y + 4, &AF_S, lb, sel ? T_TEXT : T_MID, bg);
-            if (act)
-                cv_text_r(228, y + 3, &AF_M, "GO", sel ? col : T_DIM, bg);
-            else
-                cv_text_r(228, y + 3, &AF_M, val, sel ? col : T_THEME, bg);
+            hui_row(y, lb, val, i == hui.sel[sc], act, col);
         }
-        if (nrows > HU_NROWS_SHOWN) {                    /* a scroll bar */
-            int32_t bar = (HU_FOOT_Y - HU_ROWS_Y - 6), th = bar * HU_NROWS_SHOWN / (int32_t)nrows;
-            cv_rrect(237, HU_ROWS_Y + 2, 2, bar, 1, T_LINE, T_BG);
-            cv_rrect(237, HU_ROWS_Y + 2 + (bar - th) * (int32_t)hui.top[sc] / (int32_t)(nrows - HU_NROWS_SHOWN), 2, th, 1, col, T_LINE);
-        }
+        hui_scroll(nrows, hui.top[sc], col);
         cv_oy = 0;
         cv_blit(0, (uint32_t)top);
     }
@@ -1573,20 +1644,12 @@ static void hui_draw_menu(void)
 
 static void hui_draw_menu_head(void)
 {
-    uint32_t sc = hui.screen, sig = sc * 5u + 2u + (hui.msg_t ? str_hash(5u, hui.msg) : 0u);
-    uint16_t col = HU_COL[sc];
+    uint32_t sc = hui.screen, sig = sc * 5u + 2u + (hui.msg_t ? str_hash(5u, hui.msg) : 0u) + ux.gen * 7919u;
     if (!hui.force && sig == hui.sig[0])
         return;
     hui.sig[0] = sig;
-    cv_begin(240, HU_ROWS_Y, T_BG);
-    cv_rrect(0, 0, 240, HU_HEAD, 0, hui.msg_t ? HC_YELLOW : col, T_BG);
-    cv_text_on(8, 4, &AF_M, hui.msg_t ? hui.msg : HU_TITLE[sc], sc == HU_MODE && !hui.msg_t ? RGB(255, 240, 240) : HC_INK,
-               hui.msg_t ? HC_YELLOW : col);
-    if (!hui.msg_t)
-        cv_text_r(232, 6, &AF_S, sc == HU_KEY ? "KEY & CHORDS" : sc == HU_SOUND ? "SOUNDS, EFFECTS, SETTINGS" :
-                  sc == HU_MODE ? "MODES & TEMPO" : sc == HU_LOOP ? "4 LAYERS" : "P1..P4",
-                  sc == HU_MODE ? RGB(255, 220, 220) : HC_INK, col);
-    cv_blit(0, 0);
+    hui_title(HU_TITLE[sc], sc == HU_KEY ? "KEY & CHORDS" : sc == HU_SOUND ? "SOUND, FX, SETUP" :
+              sc == HU_MODE ? "MODES & TEMPO" : sc == HU_LOOP ? "4 LAYERS" : "P1 - P4", HU_COL(sc));
 }
 
 /* a list: its title, the choices with the current one marked (scrolled to it), a scroll bar */
@@ -1595,8 +1658,8 @@ static void hui_draw_pick(void)
     static const char *const TITLE[4] = {"ENVELOPE", "LFO", "SOUND", "MODE"};
     static const char *const SUB[4] = {"ENV: BACK", "LFO: BACK", "PRESETS KNOB", "ALGORITHM KNOB"};
     uint32_t k = hui.pick_kind % 4u, n = hui_pick_count(k), cur = hui_pick_cur(k), i, top, pass;
-    uint16_t col = k == PK_MODE ? HC_RED : HC_YELLOW, ink = k == PK_MODE ? RGB(255, 240, 240) : HC_INK;
-    uint32_t sig = 0x50494Bu + k * 7u + cur * 13u + n * 3u;
+    uint16_t col = k == PK_MODE ? HC_RED : HC_YELLOW;
+    uint32_t sig = 0x50494Bu + k * 7u + cur * 13u + n * 3u + ux.gen * 7919u;
     if (cur >= hui.top[HU_PICK] + HU_NROWS_SHOWN)
         hui.top[HU_PICK] = (uint8_t)(cur - HU_NROWS_SHOWN + 1u);
     if (cur < hui.top[HU_PICK])
@@ -1607,11 +1670,7 @@ static void hui_draw_pick(void)
         return;
     hui.sig[1] = sig;
     hui.sig[0] = 0;
-    cv_begin(240, HU_ROWS_Y, T_BG);
-    cv_rrect(0, 0, 240, HU_HEAD, 0, col, T_BG);
-    cv_text_on(8, 4, &AF_M, TITLE[k], ink, col);
-    cv_text_r(232, 6, &AF_S, SUB[k], ink, col);
-    cv_blit(0, 0);
+    hui_title(TITLE[k], SUB[k], col);
     for (pass = 0; pass < 2u; pass++) {
         int32_t y0 = pass ? HU_ROWS_Y + 124 : HU_ROWS_Y;
         uint32_t h = pass ? (uint32_t)(HU_FOOT_Y - HU_ROWS_Y - 124) : 124u;
@@ -1619,20 +1678,11 @@ static void hui_draw_pick(void)
         cv_oy = -y0;
         for (i = top; i < n && i < top + HU_NROWS_SHOWN; i++) {
             int32_t y = HU_ROWS_Y + (int32_t)(i - top) * HU_ROW;
-            int sel = i == cur;
-            uint16_t bg = sel ? T_SURF : T_BG;
             if (y + HU_ROW <= y0 || y >= y0 + (int32_t)h)
                 continue;
-            cv_rrect(4, y, 232, HU_ROW - 2, 5, bg, T_BG);
-            if (sel)
-                cv_rrect(4, y, 5, HU_ROW - 2, 2, col, bg);
-            cv_text_on(16, y + 3, &AF_M, hui_pick_name(k, i), sel ? col : T_MID, bg);
+            hui_row(y, hui_pick_name(k, i), 0, i == cur, 0, col);
         }
-        if (n > HU_NROWS_SHOWN) {
-            int32_t bar = (HU_FOOT_Y - HU_ROWS_Y - 6), th = bar * HU_NROWS_SHOWN / (int32_t)n;
-            cv_rrect(237, HU_ROWS_Y + 2, 2, bar, 1, T_LINE, T_BG);
-            cv_rrect(237, HU_ROWS_Y + 2 + (bar - th) * (int32_t)top / (int32_t)(n - HU_NROWS_SHOWN), 2, th, 1, col, T_LINE);
-        }
+        hui_scroll(n, top, col);
         cv_oy = 0;
         cv_blit(0, y0);
     }

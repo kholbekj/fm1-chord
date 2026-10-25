@@ -42,6 +42,7 @@ All by Hügelton Instruments (Leo Kuroshita), in this tree:
 
 | What | Licence | Where |
 | --- | --- | --- |
+| Chakra Petch font by The Chakra Petch Project Authors (<https://github.com/m4rc1e/Chakra-Petch>): the chord UI's text and the keycap labels, rasterised into the firmware at build time (`tools/gen_aa_font.py --preset chakra`, `tools/gen_aa_keycaps.py`; the generated tables are not offered as a font, and the font declares no Reserved Font Name) | SIL OFL 1.1 | `assets/fonts/ChakraPetch-*.ttf`, `LICENSES/OFL-ChakraPetch.txt` |
 | Inter Tight font by The Inter Project Authors: the UI text, rasterised into the firmware at build time (`tools/gen_aa_font.py`; the generated tables are not offered as a font, and the font declares no Reserved Font Name) | SIL OFL 1.1 | `assets/fonts/InterTight[wght].ttf`, `LICENSES/OFL-InterTight.txt` (also `assets/fonts/OFL.txt`) |
 | Instrument samples (Versilian Studios VSCO-2 Community Edition, VCSL) | CC0 1.0 | `assets/samples-cc0/`, provenance in `ATTRIBUTION.txt` there |
 | DaisySP by Electrosmith, Corp and Emilie Gillet (<https://github.com/electro-smith/DaisySP>): the PHYS engine's modal and string models and the resonator, ported to fixed point | MIT | `firmware/src/phys_dsp.c`, `LICENSES/MIT-DaisySP.txt` |

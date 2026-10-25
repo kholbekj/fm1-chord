@@ -40,6 +40,13 @@ settings come back after power-off. HOME held gives you Felucca's full synth und
 
 ![controls](screenshots/controls.png)
 
+**Themes.** The screen takes every colour from a palette: SOUND > THEME switches between them (LAPIS, the
+default, plus Felucca's eight). A palette is one row in `tools/gen_ui_palettes.py`: background, surface, text,
+theme and accent, from which the tints are derived, plus the chord UI's role colours (KEY, SOUND, MODE, PRESET,
+LOOP, OK) and the seven degree colours in `CHORD`. A palette without its own role colours gets the classic ones.
+The tool checks the contrast of every pairing and fails the build on a miss. The type is Chakra Petch (SIL OFL),
+as in [Tessera](https://github.com/Rastapopolix/tessera), whose palette LAPIS follows.
+
 Status: running on an FM-1 (installed over USB-MIDI with `tools/fm1_install.py`, 28 % CPU at idle)
 and tested on the host simulator. It also runs in the
 [FM-1 emulator](https://github.com/simonjohansson/fm1-emulator) with a patch set on its released

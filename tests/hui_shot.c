@@ -37,8 +37,8 @@ static void hui_power_on(void)
     hui.on = 1;
     hui.force = 1;
     hui.rnd = 0x9E3779B9u;
-    settings.palette = 3;                                /* ICE */
-    palette_set(3);
+    settings.palette = UI_DEFAULT_INDEX;
+    palette_set(UI_DEFAULT_INDEX);
     usb.config = 1;
     song.g[G_BPM] = 120;
     hframes(2);                                           /* (hui_track_init: the sound, CHRD HI) */

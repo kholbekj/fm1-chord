@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* FELUCCA user interface.
- * Flat: SURF cards and panels on the palette's background, no rules, one type family (Inter Tight, three sizes), tracks
+ * Flat: SURF cards and panels on the palette's background, no rules, one type family (Chakra Petch, three sizes), tracks
  * named by circled numerals. Four columns <-> KNOB 1..4. Rendering is lazy:
  * every element remembers what it last drew and is redrawn only on change. */
 static int project_save(uint32_t slot);

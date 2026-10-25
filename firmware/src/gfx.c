@@ -20,7 +20,7 @@ typedef struct {
     uint8_t psh;                        /* log2 of the phases per glyph: g[i << psh] .. g[(i << psh) + phases - 1] */
     const uint8_t *hc;                  /* data's Huffman code (cv_alpha_hc), 0 = 2 px per byte (cv_alpha) */
 } aafont_t;
-typedef struct { const char *name; uint16_t bg, surf, text, theme, accent; } ui_pal_t;
+typedef struct { const char *name; uint16_t bg, surf, text, theme, accent, role[6], deg[7]; } ui_pal_t;
 typedef struct { uint16_t off; uint8_t w; const char *label; } kc_t;
 #include "ui_fonts.h"                   /* AF_S 12 px / 400, AF_M 15 px / 500, AF_L 28 px / 600 */
 #include "ui_palettes.h"
@@ -53,6 +53,7 @@ static int16_t cv_cy0, cv_cy1;   /* text clip: canvas rows cv_cy0 .. cv_cy1 - 1 
 static struct {
     uint16_t bg, surf, text, theme, accent;
     uint16_t mid, dim, line, sel, tint, ink, rec, raise, key, lane, grid;
+    uint16_t role[UI_NROLES], deg[7];   /* fm1-chord's UI (src/hui.c): the menus' colours, the scale degrees' */
     uint8_t light, mono;
     uint32_t gen;                /* bumped by palette_set (the text ramps follow) */
 } ux;
@@ -72,6 +73,9 @@ static struct {
 #define T_KEY ux.key             /* a keycap's fill (its label: T_INK; unavailable: a T_DIM fill) */
 #define T_LANE ux.lane           /* the piano roll: an in-scale row (SURF -> THEME 10 %) */
 #define T_GRID ux.grid           /* the piano roll: a step line (SURF -> TEXT 6 %; beats and C rows: RAISE) */
+#define T_ROLE(r) ux.role[r]    /* a role's colour (UR_*): its menu, chips and keys; INK text on it */
+#define T_DEG(d) ux.deg[(d) % 7u] /* scale degree d (0 = I): the chord, its keys */
+enum { UR_KEY, UR_SOUND, UR_MODE, UR_PRESET, UR_LOOP, UR_OK };
 #define NPALETTES UI_NPALETTES
 
 static inline uint16_t ux_gray(uint32_t x5) { return (uint16_t)((x5 << 11) | (x5 << 6) | x5); }
@@ -110,6 +114,10 @@ static void palette_set(uint32_t i)
     ux.key = ux_mix(p->bg, p->text, UI_KEY_PCT);
     ux.lane = ux_mix(p->surf, p->theme, 10);
     ux.grid = ux_mix(p->surf, p->text, 6);
+    for (uint32_t k = 0; k < UI_NROLES; k++)
+        ux.role[k] = p->role[k];
+    for (uint32_t k = 0; k < 7u; k++)
+        ux.deg[k] = p->deg[k];
     ux.light = ux_luma(p->bg) > 128u;
     ux.rec = ux.mono ? p->accent : ux.light ? UI_REC_LIGHT : UI_REC_DARK;
     ux.gen++;                                    /* the text ramps change with the coverage curve */

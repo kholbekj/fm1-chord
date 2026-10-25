@@ -33,7 +33,7 @@ LOWER = ["oeo", "coco", "eco", "nono", "minimum", "hello", "level", "decay", "re
 UPPER = ["CUTOFF", "RESO", "LEVEL", "DECAY", "RELEASE", "SOUND", "OCOE", "COCO", "NONO", "MINIMUM", "SUPER SAW",
          "FELUCCA", "PRESETS", "ANALOG", "DIGITAL", "PITCH", "SWING", "AV AW LT TA YO"]
 RULE = ["gfx"]   # "gfx": src/gfx.c cv_text; "rounded": the earlier rule (each glyph at the rounded pen, 1 phase)
-LIMIT = {"S": 0.25, "M": 0.25, "L": 0.5, "X": 0.6}
+LIMIT = {"S": 0.3, "M": 0.3, "L": 0.5, "X": 0.6}   # Chakra Petch: S and M a little over a quarter phase (lowercase)
 
 
 def parse(path):
@@ -174,7 +174,7 @@ def main():
     a = ap.parse_args()
     RULE[0] = a.rule
     faces = parse(a.header)
-    spec = {n: (font, px) for n, font, px, *_ in gf.preset("inter-tight")}
+    spec = {n: (font, px) for n, font, px, *_ in gf.preset("chakra")}
     bad = 0
     for name, f in faces.items():
         font, px = spec[name]

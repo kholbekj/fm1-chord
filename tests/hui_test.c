@@ -148,6 +148,14 @@ static int test_sound_menu(void)
     bad += check("OUT LEVEL: LINE", hui.out_line == 1u && hcfx.line == 1u);
     turn(EN_SELECT, 1); press(B_OCTUP);
     bad += check("MIDI IN: ON", hui.midi_in == 1u);
+    {
+        uint32_t p0 = settings.palette;
+        turn(EN_SELECT, 1); press(B_OCTUP);
+        bad += check("THEME: the next palette, set at once", settings.palette == (p0 + 1u) % NPALETTES &&
+                     T_BG == UI_PALETTES[settings.palette].bg);
+        press(B_OCTDN);
+        bad += check("THEME: back again", settings.palette == p0 && T_BG == UI_PALETTES[p0].bg);
+    }
     turn(EN_SELECT, 1); press(B_OCTUP);
     bad += check("RANDOMIZE SOUND: a message", msg_is2("RANDOMIZED SOUND"));
     press(B_HOME);
