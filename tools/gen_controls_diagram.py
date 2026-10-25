@@ -166,25 +166,27 @@ def main(out):
     gx, gy = dev(*KNOBS["ALGORITHM"])
     ox, oy = dev(*BUTTONS["OCT-"])
     left = (("MASTER", "Volume", "the pot", WHITE, 126, [(mx, my)]),
-            ("ALGORITHM", "Mode", "shows the list while it turns", RED, 200, [(gx, gy - 18), (gx, 232)]),
+            ("ALGORITHM", "Layer 1 – 4", "shows the list while it turns", RED, 200, [(gx, gy - 18), (gx, 232)]),
             ("PRESETS", "Sound", "shows the list while it turns", YELLOW, 272, [(px - 18, py)]),
-            ("OCT−  OCT+", "Octave − / +", "in a menu: value − / +", WHITE, 344, [(ox - 32, oy)]))
+            ("OCT−  OCT+", "Octave − / +", "on an armed card: OCT+ does it", WHITE, 344, [(ox - 32, oy)]))
     for t, b, s, col, y, pts in left:
         box = card(d, 16, y, t, b, col, s, min_w=190)
         route(pts + [(box[2], (box[1] + box[3]) / 2)], pts[0])
     # top: SELECT, the four knobs
-    box = card(d, 270, 48, "SELECT", "Key · menu row · list choice", GREY)
+    box = card(d, 270, 48, "SELECT", "Key · a menu's pages · list choice", GREY)
     route([dev(*KNOBS["SELECT"]), ((box[0] + box[2]) / 2, box[3])], dev(*KNOBS["SELECT"]))
     kx4 = dev(*KNOBS["KNOB 4"])[0]
-    box = card(d, 0, 48, "KNOB 1 – 4", "Filter · Resonance · Attack · Release",
-               YELLOW, "the value shows as you turn; KNOB 4 on an effect row: its amount", right=kx4 + 70)
+    box = card(d, 0, 48, "KNOB 1 – 4", "The play style's four",
+               YELLOW, "named on HOME's foot; in a menu: its cards", right=kx4 + 70)
     for k in range(4):
         x, y = dev(*KNOBS[f"KNOB {k + 1}"])
         route([(x, y), (x, box[3])], (x, y))
     # right column: the top row of buttons, their lanes between the knob captions and the buttons
-    right = (("FX", "SOUND menu", "sounds, effects, settings", YELLOW), ("SCL", "KEY menu", "key, scale, bass, voices", GREY),
-             ("ENV", "ENVELOPE list", "LONG SHORT SWELL PLUCK …", YELLOW), ("LFO", "LFO list", "vibrato OFF LOW MED HIGH", YELLOW),
-             ("EDIT", "MODE menu", "modes, tempo · 3 taps: tap tempo", RED), ("GLO", "SOUND menu", "the same as FX", YELLOW))
+    right = (("FX", "SOUND menu", "filter, amp, effects: 6 pages", YELLOW),
+             ("SCL", "KEY menu", "key, scale · bass, voices", GREY),
+             ("ENV", "SOUND › AMP", "envelope, attack, release", YELLOW), ("LFO", "SOUND › WOBBLE", "tremolo, vibrato, stereo", YELLOW),
+             ("EDIT", "Next play style", "held: a style on each key", RED),
+             ("GLO", "MIX menu", "levels · tempo · setup", BLUE))
     for i, (n, b, s, col) in enumerate(right):
         y = 118 + i * 70
         box = card(d, 0, y, n, b, col, s, min_w=200, right=W - 10)
@@ -192,8 +194,8 @@ def main(out):
         lane = DY + 100 + i * 7
         route([(ax, ay - 20), (ax, lane), (DX + DW - 6, lane), (box[0], (box[1] + box[3]) / 2)], (ax, ay - 20))
     # bottom row: HOME SAVE ARP SEQ PLAY REC, straight down through the keys to lanes under the device
-    bottom = (("HOME", "Home", "held: Felucca's synth", WHITE), ("SAVE", "Presets P1–P4", "again: save", GREEN),
-              ("ARP", "Arp mode", "on / off", RED), ("SEQ", "LOOPER screen", "layers, bars, metronome", BLUE),
+    bottom = (("HOME", "Home", "held: Felucca's synth", WHITE), ("SAVE", "Presets P1–P4", "again: next slot · OCT+ saves", GREEN),
+              ("ARP", "Style before", "EDIT: the next", RED), ("SEQ", "LOOPER", "bars, clear all", BLUE),
               ("PLAY", "Play / pause", "looper, sequencer, loops", GREEN), ("REC", "Record a layer", "held: clear it", RED))
     sizes = [card_size(d, n, b, s, 140) for n, b, s, _ in bottom]
     gap, total = 10, sum(w for w, _ in sizes) + 10 * 5
@@ -219,7 +221,7 @@ def main(out):
     d.text((34, ly + 66), "C#4 ↑  D#4 ↗  F#4 →  G#4 ↘  A#4 ↓  C#5 ↙  D#5 ←  F#5 ↖  the joystick, held with a chord;  "
                           "F#3 INVERT  G#3 LOCK  A#3 HOLD", fill=INK, font=f15)
     d.text((34, ly + 90), "Colours: yellow sound · grey key · red mode · green presets and play · blue looper.  "
-                          "OCT− and OCT+ together: RANDOMIZE.  SAVE with HOME held: back from Felucca's synth.", fill=DIM, font=f13)
+                          "A menu button again: its next page; held: its layer.  OCT− + OCT+: RANDOMIZE.  HOME + SAVE: back from Felucca.", fill=DIM, font=f13)
     im.save(out)
     print(out)
 

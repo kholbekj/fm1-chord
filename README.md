@@ -23,25 +23,31 @@ wheel; key, scale, bass, voices, voice leading; four presets; MIDI in and out. O
 Bluetooth are missing.
 
 **Controls.** Four layers, as in SLOOP and JIANT: **ALGORITHM** picks layer 1 to 4, each with its own
-sound and play style, and the looper records into the selected one. The menu buttons, colour-coded, open
-their menu when tapped and are a layer when held: the white keys and KNOB 1 to 4 change job while the
-button is down, their map on the screen. **SCL** key (any key sets the key; knobs scale, bass, voices,
-joystick), **FX** sound (a key a sound, 16 a page; knobs page, envelope, reverb, delay), **EDIT** mode
-(keys 1 to 11 the play style: PLAY, STRUM, LEAD, DRONE, ARP, REPEAT, SEQ, DRUM, LOOPS, HIRO, EAR; knobs
-strum, arp, rate, kit), **GLO** mix (keys 1 to 4 mute the layers, 7 the metronome, 16 tap tempo; knobs the
-levels; tapped: the MIX screen), **SAVE** presets (keys 1 to 4 load P1 to P4, 5 to 8 save them, each with its loop). PRESETS
-picks the sound from a list, ENV and LFO open theirs, KNOB 1 to 4 are filter, resonance, attack and
-release with the value shown as you turn (KNOB 4 sets an effect's amount on its row in the sound menu);
-tempo is on the mode menu and EDIT tapped three times. REC on a layer that already plays arms the next
-empty one; REC held clears the layer, held on to 2 s everything. Your settings and the loop come back after
-power-off (the loop paused: PLAY). The presets' loops live in Felucca's third user sample slot, as JIANT keeps its
-songs there: two user sample slots remain (USR1, USR2). HOME held gives you Felucca's full synth underneath; hold HOME and press SAVE to come back to the chord UI.
+sound and play style, and the looper records into the selected one. **PRESETS** picks the sound, on every screen.
+The menu buttons are colour-coded. **EDIT** tapped steps to the next play style, **ARP** to the one before. On HOME, KNOB 1 to 4 are that
+style's own settings, named along the foot of the screen: filter, resonance, attack and release while it plays the
+sound (STRUM: its speed for the attack), ARP its pattern, rate and layer, LOOPS its loop, variation, kit and the
+tempo, DRUM and SEQ their kit or length and the tempo, HIRO the song, difficulty and speed. The other buttons, tapped,
+open a menu of a few pages of four cards, after JIANT: KNOB 1 to 4 set the four cards, SELECT walks the pages, and the
+same button tapped again goes on to the next page, round. **SCL** KEY (KEY: key, scale, octave, layout; CHORD: bass,
+voices, voice leading, joystick), **FX** SOUND (FILTER, AMP, SPACE, MOTION, WOBBLE, COLOUR: the filter, the envelope
+and every effect with its amount), **GLO** MIX (the levels, TEMPO, SETUP: speaker, output, MIDI in, theme), **SEQ**
+LOOPER (bars, clear all), **SAVE** PRESETS (SAVE again: the next slot, OCT+ saves; KNOB 2 then OCT+ loads). ENV and LFO
+open SOUND's AMP and WOBBLE pages. An action card (CLEAR, LOAD, SAVE) is armed by turning it and done with OCT+;
+otherwise OCT− / OCT+ are the octave. Held, a menu button is a layer: the white keys
+and KNOB 1 to 4 change job while it is down, their map on the screen. **SCL** key (any key sets the key; knobs scale,
+bass, voices, joystick), **FX** sound (a key a sound, 16 a page; knobs page, envelope, reverb, delay), **EDIT** mode
+(keys 1 to 11 the play style: PLAY, STRUM, LEAD, DRONE, ARP, REPEAT, SEQ, DRUM, LOOPS, HIRO, EAR; knobs strum, arp,
+rate, kit), **GLO** mix (keys 1 to 4 mute the layers, 7 the metronome, 16 tap tempo; knobs the levels), **SAVE**
+presets (keys 1 to 4 load P1 to P4, 5 to 8 save them). REC on a layer that already plays arms the next empty one.
+Your settings come back after power-off. HOME held gives you Felucca's full synth underneath; hold HOME and press
+SAVE to come back to the chord UI.
 
 | | | |
 |---|---|---|
 | ![home](screenshots/home_c7.png) | ![slash chord](screenshots/home_slash.png) | ![inversion](screenshots/home_inverted.png) |
-| ![effects](screenshots/home_fx.png) | ![sound list](screenshots/pick_sound.png) | ![envelopes](screenshots/pick_env.png) |
-| ![key menu](screenshots/menu_key.png) | ![sound menu](screenshots/menu_sound_amount.png) | ![mode menu](screenshots/menu_mode.png) |
+| ![effects](screenshots/home_fx.png) | ![sound list](screenshots/pick_sound.png) | ![presets](screenshots/menu_presets.png) |
+| ![key menu](screenshots/menu_key.png) | ![sound menu, SPACE](screenshots/menu_sound_amount.png) | ![mix menu](screenshots/menu_mix.png) |
 | ![looper](screenshots/menu_looper.png) | ![sequencer](screenshots/mode_sequencer.png) | ![drum loop recording](screenshots/mode_drumloop_rec.png) |
 | ![drums](screenshots/mode_drum.png) | ![at rest: the key legend](screenshots/home_idle.png) | ![chord hiro](screenshots/mode_hiro.png) |
 | ![ALGORITHM: the four layers](screenshots/pick_layers.png) | ![FX held: a sound on each key](screenshots/layer_sound.png) | ![EDIT held: the play styles](screenshots/layer_mode.png) |

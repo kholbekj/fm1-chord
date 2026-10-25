@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 fm1-chord contributors */
 /* The chord machine UI (firmware/src/hui.c) against the real input, drawing, sound and project code: power-on takes
- * the track (its sound, CHRD HI), the three menus open and close on their buttons, SELECT moves the cursor,
- * OCT- / OCT+ change every row's value (and act on the actions), the knobs (mode, sound, filter, attack,
- * release, tempo) work on every screen, the octave buttons, tap tempo, the presets save and load the chord machine
+ * the track (its sound, CHRD HI), the menus open on their buttons and walk their pages on them again, SELECT walks
+ * the pages, KNOB 1..4 set every card, the actions arm and OCT+ does them, the knobs on HOME (filter, attack,
+ * release), the sound and layer lists, the octave buttons, tap tempo, the presets save and load the chord machine
  * state with the project, every screen draws, and HOME held / SAVE + HOME hand over to Felucca's UI and back.
  * Run by tests/run_tests.sh (needs build/gen from one firmware build). */
 #define UI_TEST_NO_MAIN 1
@@ -23,15 +23,26 @@ static void hui_power_on(void)
     song.g[G_BPM] = 120;
     hframes(2);
 }
-static int val_is(uint32_t screen, uint32_t row, const char *want)
+static int card_is(uint32_t k, const char *want)
 {
     char b[20];
-    hui_row_value(screen, row, b);
+    int32_t f;
+    hui_card(k, b, &f);
     if (!str_eq(b, want))
-        printf("  row %u of %u: %s, want %s\n", row, screen, b, want);
+        printf("  card %s: %s, want %s\n", HK_NAME[k], b, want);
     return str_eq(b, want);
 }
 static int msg_is2(const char *s) { return hui.msg_t && str_eq(hui.msg, s); }
+static int on_page(uint32_t sc, uint32_t page) { return hui.screen == sc && hui.page[sc] == page; }
+static void both_oct(void)                          /* OCT- and OCT+ together */
+{
+    uint32_t m = (1u << panel.btn[B_OCTDN]) | (1u << panel.btn[B_OCTUP]);
+    fm1_in.buttons |= m;
+    host_pressed |= m;
+    frame();
+    fm1_in.buttons &= ~m;
+    frame();
+}
 
 static int test_boot_and_menus(void)
 {
@@ -42,15 +53,20 @@ static int test_boot_and_menus(void)
                  hui.on && hui.screen == HU_HOME && t->p[P_CHRD] == CH_HI && hc.t[0].sound == 1u && t->eng_req == ENGI_HC &&
                  t->p[P_VOICE] == V_POLY);
     press(B_SCL);
-    bad += check("SCL: the KEY menu", hui.screen == HU_KEY);
+    bad += check("SCL: the KEY menu, its first page", on_page(HU_KEY, 0));
     press(B_SCL);
-    bad += check("  SCL again: HOME", hui.screen == HU_HOME);
+    bad += check("  SCL again: the next page (CHORD)", on_page(HU_KEY, 1));
+    press(B_SCL);
+    bad += check("  and again: round to KEY", on_page(HU_KEY, 0));
     press(B_FX);
-    bad += check("FX: the SOUND menu; EDIT: the MODE menu; SAVE: PRESETS; HOME: home",
-                 hui.screen == HU_SOUND && (press(B_EDIT), hui.screen == HU_MODE) && (press(B_SAVE), hui.screen == HU_PRESET) &&
-                 (press(B_HOME), hui.screen == HU_HOME));
-    press(B_GLO);
-    bad += check("GLO: the MIX screen", hui.screen == HU_MIX);
+    bad += check("FX: SOUND; SAVE: PRESETS; GLO: MIX; SEQ: LOOPER; HOME: home",
+                 hui.screen == HU_SOUND && (press(B_SAVE), hui.screen == HU_PRESET) &&
+                 (press(B_GLO), hui.screen == HU_MIX) && (press(B_SEQ), hui.screen == HU_LOOP) && (press(B_HOME), hui.screen == HU_HOME));
+    press(B_SEQ); press(B_SEQ);
+    bad += check("SEQ again on the one-page LOOPER: HOME", hui.screen == HU_HOME);
+    press(B_FX); press(B_FX); press(B_FX); press(B_HOME);
+    press(B_FX);
+    bad += check("a menu opens on the page it was left on (SOUND: SPACE)", on_page(HU_SOUND, 2));
     press(B_HOME);
     return bad;
 }
@@ -59,36 +75,48 @@ static int test_key_menu(void)
 {
     int bad = 0;
     track_t *t = &trk[0];
-    uint32_t i;
+    uint32_t cut = hc.t[0].cutoff;
     hui_power_on();
+    cut = hc.t[0].cutoff;
     press(B_SCL);
-    bad += check("KEY: C MAJOR, octave 0", val_is(HU_KEY, RK_KEY, "C") && val_is(HU_KEY, RK_SCALE, "MAJOR") && val_is(HU_KEY, RK_OCT, "0"));
-    press(B_OCTUP);
-    bad += check("  OCT+ on KEY: C#, every track", val_is(HU_KEY, RK_KEY, "C#") && trk[3].p[P_ROOT] == 1);
-    press(B_OCTDN); press(B_OCTDN);
-    bad += check("  OCT- twice: B (wraps)", val_is(HU_KEY, RK_KEY, "B") && t->p[P_ROOT] == 11);
-    turn(EN_SELECT, 2);
-    bad += check("SELECT +2: the SCALE row", hui.sel[HU_KEY] == RK_SCALE);
-    press(B_OCTUP);
-    bad += check("  OCT+: MINOR (Felucca SCALE 2 on every track)", val_is(HU_KEY, RK_SCALE, "MINOR") && t->p[P_SCALE] == 2 && trk[2].p[P_SCALE] == 2);
-    for (i = 0; i < 9u; i++) press(B_OCTUP);
-    bad += check("  ten scales round: MAJOR again", val_is(HU_KEY, RK_SCALE, "MAJOR"));
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("LAYOUT: PIANO", hc.t[0].layout == HL_PIANO && val_is(HU_KEY, RK_LAYOUT, "PIANO"));
-    turn(EN_SELECT, 1); press(B_OCTUP); press(B_OCTUP);
-    bad += check("JOYSTICK: CHROM", hc.t[0].mode == HM_CHROM && val_is(HU_KEY, RK_JOY, "CHROM"));
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("BASS: OFF (the default is SLASH; one step on)", hc.t[0].bass == HB_OFF);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("VOICES: 4", hc.t[0].voices == HV_4 && val_is(HU_KEY, RK_VOICES, "4"));
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("VOICE LEAD: ON", hc.t[0].vlead == 1u);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("RANDOMIZE ALL: a message, the sound reloaded, the tempo changed or not", msg_is2("RANDOMIZED ALL") && t->p[P_CHRD] == CH_HI);
+    bad += check("KEY: C MAJOR, octave 0, the layer's LAYOUT", card_is(HK_KEY, "C") && card_is(HK_SCALE, "MAJOR") && card_is(HK_OCT, "0") &&
+                 hui_page()->card[3] == HK_LAYOUT);
+    turn(EN_K1, 1);
+    bad += check("  KNOB 1: C#, every track; not the filter", card_is(HK_KEY, "C#") && trk[3].p[P_ROOT] == 1 && hc.t[0].cutoff == cut);
+    turn(EN_K1, -2);
+    bad += check("  back two: B (wraps)", card_is(HK_KEY, "B") && t->p[P_ROOT] == 11);
+    turn(EN_K2, 1);
+    bad += check("KNOB 2: MINOR (Felucca SCALE 2 on every track)", card_is(HK_SCALE, "MINOR") && t->p[P_SCALE] == 2 && trk[2].p[P_SCALE] == 2);
+    turn(EN_K2, 9);
+    bad += check("  ten scales round: MAJOR again", card_is(HK_SCALE, "MAJOR"));
+    turn(EN_K3, 1);
+    bad += check("KNOB 3: the octave up", song.octave == 1 && card_is(HK_OCT, "+1"));
+    turn(EN_K3, 5);
+    bad += check("  stops at +2", song.octave == 2);
+    turn(EN_K3, -2);
+    turn(EN_K4, 1);
+    bad += check("KNOB 4: LAYOUT PIANO", hc.t[0].layout == HL_PIANO && card_is(HK_LAYOUT, "PIANO"));
+    turn(EN_SELECT, 1);
+    bad += check("SELECT: the CHORD page", on_page(HU_KEY, 1));
     turn(EN_SELECT, 5);
-    bad += check("SELECT past the end stays on the last row", hui.sel[HU_KEY] == RK_N - 1u);
+    bad += check("  past the last page: stays there", on_page(HU_KEY, 1));
+    turn(EN_K1, 1);
+    bad += check("BASS: OFF (the default is SLASH; one step on)", hc.t[0].bass == HB_OFF);
+    turn(EN_K2, 1);
+    bad += check("VOICES: 4", hc.t[0].voices == HV_4 && card_is(HK_VOICES, "4"));
+    turn(EN_K3, 1);
+    bad += check("VOICE LEAD: ON (to the right)", hc.t[0].vlead == 1u);
+    turn(EN_K3, 1);
+    bad += check("  further right: stays ON", hc.t[0].vlead == 1u);
+    turn(EN_K4, 2);
+    bad += check("JOYSTICK: CHROM", hc.t[0].mode == HM_CHROM && card_is(HK_JOY, "CHROM"));
     turn(EN_SELECT, -20);
-    bad += check("  and before the start on the first", hui.sel[HU_KEY] == 0u);
+    bad += check("SELECT before the first page: the first", on_page(HU_KEY, 0));
+    both_oct();
+    bad += check("OCT- + OCT+: RANDOMIZE ALL, the sound reloaded", msg_is2("RANDOMIZED ALL") && t->p[P_CHRD] == CH_HI);
+    press(B_OCTUP);
+    bad += check("OCT+ on a menu: the octave", song.octave == 1);
+    press(B_OCTDN);
     press(B_HOME);
     return bad;
 }
@@ -97,67 +125,128 @@ static int test_sound_menu(void)
 {
     int bad = 0;
     track_t *t = &trk[0];
+    uint32_t p;
     hui_power_on();
     press(B_FX);
-    bad += check("SOUND: SAW, LONG, the effects OFF", val_is(HU_SOUND, RS_SOUND, "SAW") && val_is(HU_SOUND, RS_ENV, "LONG") &&
-                 val_is(HU_SOUND, RS_REV, "OFF") && val_is(HU_SOUND, RS_STEREO, "ON"));
-    press(B_OCTUP);
-    bad += check("  OCT+: TRIANGLE loaded (the CHORD engine), CHRD HI kept, its envelope", val_is(HU_SOUND, RS_SOUND, "TRIANGLE") &&
-                 t->eng_req == ENGI_HC && t->p[P_CHRD] == CH_HI && hc.t[0].env == HE_LONG);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("ENVELOPE: SHORT -> ATK 100 ms", hc.t[0].env == HE_SHORT && TIME_MS_X10[t->p[P_ATK]] / 10u >= 80u && TIME_MS_X10[t->p[P_ATK]] / 10u <= 120u);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("ATTACK: fine-tuned up (the preset's value + 4)", hc.t[0].atk != 0u && t->p[P_ATK] == hc.t[0].atk);
-    turn(EN_SELECT, 1); press(B_OCTDN);
-    bad += check("RELEASE: fine-tuned down", hc.t[0].rel != 0u && t->p[P_REL] == hc.t[0].rel);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("FILTER WHEEL: ON -> the master filter", hc.t[0].filt == 1u && hcfx.filt == 1u);
-    turn(EN_SELECT, 1); press(B_OCTDN);
-    bad += check("CUTOFF: down by 4", hc.t[0].cutoff == 123u && hcfx.cutoff == 123u);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("RESONANCE: up by 4, the master filter follows", hc.t[0].res == 4u && hcfx.res == 4u && val_is(HU_SOUND, RS_RES, "4"));
-    press(B_OCTDN);
-    turn(EN_SELECT, 1); press(B_OCTUP);
+    bad += check("SOUND: the FILTER page, the wheel OFF, the effects OFF, STEREO on", on_page(HU_SOUND, 0) && card_is(HK_FILT, "OFF") &&
+                 card_is(HK_REV, "OFF") && card_is(HK_REV_AMT, "-") && card_is(HK_STEREO, "ON"));
+    for (p = 0; p < HU_SEC[HU_SOUND].n; p++)
+        bad += HU_PG_SOUND[p].card[0] == 0u;             /* (every page has a first card) */
+    turn(EN_K1, 1);
+    bad += check("WHEEL: ON -> the master filter", hc.t[0].filt == 1u && hcfx.filt == 1u);
+    turn(EN_K2, -1);
+    bad += check("CUTOFF: down by 3", hc.t[0].cutoff == 124u && hcfx.cutoff == 124u);
+    turn(EN_K3, 2);
+    bad += check("RESO: up by 6, the master filter follows", hc.t[0].res == 6u && hcfx.res == 6u && card_is(HK_RES, "6"));
+    turn(EN_K3, -2);
+    turn(EN_K4, 1);
     bad += check("HI-PASS: ON", hcfx.hp == 1u);
-    turn(EN_SELECT, 1); press(B_OCTUP); press(B_OCTUP);
-    bad += check("REVERB: HALL -> the send and the bus (ROOM model, size 110)", hc.t[0].rev == HRV_HALL && t->p[P_REV] == 65 &&
-                 song.g[G_RTYPE] == 0 && song.g[G_RSIZE] == 110);
-    press(B_OCTUP); press(B_OCTUP);
-    bad += check("  .. SPRING: the SPRING model", hc.t[0].rev == HRV_SPRING && song.g[G_RTYPE] == 1);
-    turn(EN_SELECT, 1); press(B_OCTUP); press(B_OCTUP); press(B_OCTUP);
-    bad += check("DELAY: 1/16 -> the send on, DLY TIME 1/16", hc.t[0].dly == HDL_1_16 && t->p[P_DLY] == 55 && song.g[G_DTIME] == 2);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("CHORUS: LIGHT -> the send", hc.t[0].cho == HCH_LIGHT && t->p[P_CHOR] == 40);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("FLANGER: SLOW -> the master", hcfx.flg == HFL_SLOW);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("TREMOLO: 1/4 -> the LFO on AMP at the tempo", hc.t[0].trem == HTR_1_4 && t->p[P_LD_AMP] == 90 && t->p[P_LRATE] > 0);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("LFO: LOW -> a little pitch vibrato", t->p[P_LD_PIT] == 2);
-    turn(EN_SELECT, 1); press(B_OCTUP);
+    press(B_FX);
+    bad += check("FX again: AMP", on_page(HU_SOUND, HU_PG_AMP));
+    turn(EN_K1, 1);
+    bad += check("ENV: SHORT -> ATK 100 ms", hc.t[0].env == HE_SHORT && TIME_MS_X10[t->p[P_ATK]] / 10u >= 80u && TIME_MS_X10[t->p[P_ATK]] / 10u <= 120u);
+    turn(EN_K2, 2);
+    bad += check("ATTACK: fine-tuned up (the preset's value + 4)", hc.t[0].atk != 0u && t->p[P_ATK] == hc.t[0].atk);
+    turn(EN_K3, -2);
+    bad += check("RELEASE: fine-tuned down", hc.t[0].rel != 0u && t->p[P_REL] == hc.t[0].rel);
+    turn(EN_K4, 1);
     bad += check("GLIDE: SHORT", t->p[P_GLIDE] == 30);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("DRIVE: TUBE -> DIST", t->p[P_DIST] == 28);
-    turn(EN_SELECT, 1); press(B_OCTUP);
+    press(B_FX);
+    turn(EN_K1, 2);
+    bad += check("SPACE: REVERB HALL -> the send and the bus (ROOM model, size 110)", on_page(HU_SOUND, 2) && hc.t[0].rev == HRV_HALL &&
+                 t->p[P_REV] == 65 && song.g[G_RTYPE] == 0 && song.g[G_RSIZE] == 110 && card_is(HK_REV_AMT, "65"));
+    turn(EN_K2, 3);
+    bad += check("  AMOUNT: 77, the send follows", hc.t[0].rev_amt == 77u && t->p[P_REV] == 77);
+    turn(EN_K1, 2);
+    bad += check("  .. SPRING: the SPRING model", hc.t[0].rev == HRV_SPRING && song.g[G_RTYPE] == 1);
+    turn(EN_K3, 3);
+    bad += check("DELAY: 1/16 -> the send on, DLY TIME 1/16", hc.t[0].dly == HDL_1_16 && t->p[P_DLY] == 55 && song.g[G_DTIME] == 2);
+    press(B_FX);
+    turn(EN_K1, 1);
+    bad += check("MOTION: CHORUS LIGHT -> the send", on_page(HU_SOUND, 3) && hc.t[0].cho == HCH_LIGHT && t->p[P_CHOR] == 40);
+    turn(EN_K3, 1);
+    bad += check("FLANGER: SLOW -> the master", hcfx.flg == HFL_SLOW);
+    turn(EN_K4, 2);
+    bad += check("  its AMOUNT: the wet (64 + 8), hcfx follows", hc.t[0].flg_amt == 72u && hcfx.flg_amt == 72u);
+    press(B_FX);
+    turn(EN_K1, 1);
+    bad += check("WOBBLE: TREMOLO 1/4 -> the LFO on AMP at the tempo", on_page(HU_SOUND, HU_PG_WOBBLE) && hc.t[0].trem == HTR_1_4 &&
+                 t->p[P_LD_AMP] == 90 && t->p[P_LRATE] > 0);
+    turn(EN_K2, -5);
+    bad += check("  its AMOUNT: the depth (90 - 20)", hc.t[0].trem_amt == 70u && t->p[P_LD_AMP] == 70);
+    turn(EN_K3, 1);
+    bad += check("VIBRATO: LOW -> a little pitch vibrato", t->p[P_LD_PIT] == 2);
+    turn(EN_K4, -1);
+    bad += check("STEREO: OFF (to the left) -> no partners", hc.t[0].stereo == 0u && trk_pair[0] == 0u);
+    press(B_FX);
+    turn(EN_K1, 1);
+    bad += check("COLOUR: DRIVE TUBE -> DIST", on_page(HU_SOUND, 5) && t->p[P_DIST] == 28);
+    turn(EN_K2, 1);
     bad += check("TAPE: LOFI -> the master", hcfx.tape == HTP_LOFI);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("STEREO: OFF -> no partners", hc.t[0].stereo == 0u && trk_pair[0] == 0u);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("SPEAKER: LOWCUT (Felucca's low cut)", settings.lowcut == 1u && fx_lowcut == 1u);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("OUT LEVEL: LINE", hui.out_line == 1u && hcfx.line == 1u);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("MIDI IN: ON", hui.midi_in == 1u);
     {
-        uint32_t p0 = settings.palette;
-        turn(EN_SELECT, 1); press(B_OCTUP);
-        bad += check("THEME: the next palette, set at once", settings.palette == (p0 + 1u) % NPALETTES &&
-                     T_BG == UI_PALETTES[settings.palette].bg);
-        press(B_OCTDN);
-        bad += check("THEME: back again", settings.palette == p0 && T_BG == UI_PALETTES[p0].bg);
+        uint32_t rel = hc.t[0].rel, atk = hc.t[0].atk;
+        turn(EN_K3, 2); turn(EN_K4, 2);
+        bad += check("  KNOB 3 / 4 on no card: nothing (not the attack, not the release)", hc.t[0].rel == rel && hc.t[0].atk == atk);
     }
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("RANDOMIZE SOUND: a message", msg_is2("RANDOMIZED SOUND"));
+    press(B_FX);
+    bad += check("FX on the last page: round to FILTER", on_page(HU_SOUND, 0));
+    turn(EN_SELECT, 10);
+    bad += check("SELECT: on to the last page, stops there", on_page(HU_SOUND, 5));
+    both_oct();
+    bad += check("OCT- + OCT+ on SOUND: RANDOMIZE SOUND", msg_is2("RANDOMIZED SOUND"));
+    press(B_HOME);
+    press(B_ENV);
+    bad += check("ENV: SOUND's AMP page", on_page(HU_SOUND, HU_PG_AMP));
+    press(B_ENV);
+    bad += check("  ENV again: HOME", hui.screen == HU_HOME);
+    press(B_LFO);
+    bad += check("LFO: SOUND's WOBBLE page (the vibrato)", on_page(HU_SOUND, HU_PG_WOBBLE));
+    press(B_ENV);
+    bad += check("  ENV from there: AMP", on_page(HU_SOUND, HU_PG_AMP));
+    press(B_HOME);
+    return bad;
+}
+
+static int test_mix_menu(void)
+{
+    int bad = 0;
+    int16_t lv = trk[0].p[P_LEVEL];
+    uint32_t p0;
+    hui_power_on();
+    lv = trk[0].p[P_LEVEL];
+    press(B_GLO);
+    bad += check("GLO: MIX, the four layers' levels", on_page(HU_MIX, 0) && hui_page()->card[3] == HK_L4);
+    turn(EN_K1, -2);
+    bad += check("  KNOB 1: layer 1's level down 8", trk[0].p[P_LEVEL] == lv - 8);
+    press(B_OCTUP);
+    bad += check("  OCT+ on MIX: the octave, not a level", song.octave == 1 && trk[0].p[P_LEVEL] == lv - 8);
+    press(B_OCTDN);
+    press(B_GLO);
+    turn(EN_K1, 2);
+    bad += check("GLO again: TEMPO; KNOB 1: 122 BPM", on_page(HU_MIX, 1) && song.g[G_BPM] == 122 && card_is(HK_BPM, "122"));
+    {
+        uint8_t m = hcl.metro;
+        turn(EN_K2, -1);
+        bad += check("  KNOB 2: the metronome off to the left ..", hcl.metro == 0u && card_is(HK_METRO, "OFF"));
+        turn(EN_K2, 1);
+        bad += check("  .. on to the right", hcl.metro == 1u);
+        hcl.metro = m;
+    }
+    press(B_GLO);
+    turn(EN_K1, 1);
+    bad += check("SETUP: SPEAKER LOWCUT (Felucca's low cut)", on_page(HU_MIX, 2) && settings.lowcut == 1u && fx_lowcut == 1u);
+    turn(EN_K2, 1);
+    bad += check("  OUTPUT: LINE", hui.out_line == 1u && hcfx.line == 1u);
+    turn(EN_K3, 1);
+    bad += check("  MIDI IN: ON", hui.midi_in == 1u);
+    p0 = settings.palette;
+    turn(EN_K4, 1);
+    bad += check("  THEME: the next palette, set at once", settings.palette == (p0 + 1u) % NPALETTES && T_BG == UI_PALETTES[settings.palette].bg);
+    turn(EN_K4, -1);
+    bad += check("  THEME: back again", settings.palette == p0 && T_BG == UI_PALETTES[p0].bg);
+    turn(EN_K1, -1); turn(EN_K2, -1); turn(EN_K3, -1);
+    press(B_GLO);
+    bad += check("GLO on SETUP: round to MIX", on_page(HU_MIX, 0));
     press(B_HOME);
     return bad;
 }
@@ -166,40 +255,59 @@ static int test_mode_menu_knobs(void)
 {
     int bad = 0;
     track_t *t = &trk[0];
-    uint32_t i, bpm;
+    uint32_t i, rel;
     hui_power_on();
     press(B_EDIT);
-    bad += check("MODE: PLAY, 120 BPM", val_is(HU_MODE, RM_MODE, "PLAY") && val_is(HU_MODE, RM_BPM, "120 BPM"));
-    press(B_OCTUP);
-    bad += check("  OCT+: STRUM", hc.t[0].play == HP_STRUM && val_is(HU_MODE, RM_MODE, "STRUM"));
-    press(B_OCTUP);
+    bad += check("EDIT tapped: the next style (STRUM), on HOME, said; no menu", hc.t[0].play == HP_STRUM && hui.screen == HU_HOME &&
+                 msg_is2(HP_NAME[HP_STRUM]));
+    bad += check("  HOME's knobs are STRUM's: filter, reso, the strum SPEED, release", HU_HOME_KNOBS[HP_STRUM][2] == HK_STRUM);
+    turn(EN_K3, 1);
+    bad += check("  KNOB 3: SPEED MEDIUM -> FAST, said", hc.t[0].strum == HST_FAST && msg_is2("SPEED FAST"));
+    press(B_EDIT);
     bad += check("  .. LEAD: the track POLY (a note a key), no partners", hc.t[0].play == HP_LEAD && t->p[P_VOICE] == V_POLY && trk_pair[0] == 0u);
-    turn(EN_SELECT, 1); press(B_OCTUP); press(B_OCTUP);
-    bad += check("TEMPO: 122", song.g[G_BPM] == 122);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("STRUM SPEED: MEDIUM by default, OCT+: FAST", val_is(HU_MODE, RM_STRUM, "FAST") && hc.t[0].strum == HST_FAST);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("ARP PATTERN: DOWN", hc.t[0].arp_pat == HA_DOWN);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("ARP RATE: 1/16", hc.t[0].arp_rate == HR_1_16);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("ARP LAYER: CHORD+ARP", hc.t[0].arp_layer == HAL_CHORD);
-    hui.sel[HU_MODE] = RM_RANDOM; press(B_OCTUP);
-    bad += check("RANDOMIZE PATTERN: a message", msg_is2("RANDOMIZED PATTERN"));
+    press(B_EDIT); press(B_EDIT);
+    bad += check("ARP: KNOB 1..3 its PATTERN, RATE, LAYER, KNOB 4 the filter", hc.t[0].play == HP_ARP &&
+                 HU_HOME_KNOBS[HP_ARP][0] == HK_APAT && HU_HOME_KNOBS[HP_ARP][3] == HK_CUT);
+    turn(EN_K1, 1);
+    bad += check("  PATTERN: DOWN", hc.t[0].arp_pat == HA_DOWN);
+    turn(EN_K2, 1);
+    bad += check("  RATE: 1/16", hc.t[0].arp_rate == HR_1_16);
+    turn(EN_K3, 1);
+    bad += check("  LAYER: CHORD+ARP", hc.t[0].arp_layer == HAL_CHORD);
+    {
+        uint8_t cut = hc.t[0].cutoff;
+        turn(EN_K4, -2);
+        bad += check("  KNOB 4: the filter", hc.t[0].cutoff == cut - 6 && hc.t[0].filt);
+        hc.t[0].cutoff = cut; hc.t[0].filt = 0; hc_apply(t);
+    }
+    hui_mode_set(t, HP_DRUMLOOP);
+    turn(EN_K1, 1); turn(EN_K2, 1); turn(EN_K3, 1); turn(EN_K4, 2);
+    bad += check("LOOPS: KNOB 1 the loop's style, 2 its variation, 3 the kit, 4 the tempo", hc.t[0].dl_style == 1u && hc.t[0].dl_var == 1u &&
+                 hc.t[0].kit == 1u && song.g[G_BPM] == 122);
+    hc.t[0].kit = 0; song.g[G_BPM] = 120;
+    hui_mode_set(t, HP_EAR);
+    {
+        uint32_t rel = hc.t[0].rel;
+        turn(EN_K4, 2);
+        bad += check("EAR: KNOB 4 has nothing (not the release)", hc.t[0].rel == rel);
+    }
+    press(B_EDIT);
+    bad += check("EDIT on EAR, the last style: round to PLAY (no MIXER)", hc.t[0].play == HP_PLAY);
     press(B_HOME);
     turn(EN_ALGO, 1);
     bad += check("ALGORITHM on HOME: layer 2 selected, the layers' list shown, layer 1's style kept",
-                 song.sel == 1u && hui.screen == HU_PICK && hui.pick_kind == PK_LAYER && hc.t[0].play == HP_LEAD);
+                 song.sel == 1u && hui.screen == HU_PICK && hui.pick_kind == PK_LAYER && hc.t[0].play == HP_PLAY);
     turn(EN_ALGO, -2);
     bad += check("  back two: layer 1 (the first)", song.sel == 0u);
     fm1_ms += 1600; frame();
     turn(EN_PRESET, 1);
     bad += check("PRESETS knob: the next sound (TRIANGLE)", hc.t[0].sound == 2u && t->eng_req == ENGI_HC);
     turn(EN_PRESET, -1);
+    fm1_ms += 1600; frame();
     turn(EN_K1, -5);
-    bad += check("KNOB 1: the FILTER wheel on, the cutoff down", hc.t[0].filt == 1u && hc.t[0].cutoff == 112u);
+    bad += check("KNOB 1 on HOME: the FILTER wheel on, the cutoff down", hc.t[0].filt == 1u && hc.t[0].cutoff == 112u);
     turn(EN_K2, 3);
-    bad += check("KNOB 2: the resonance (9), said in the header", hc.t[0].res == 9u && hcfx.res == 9u && msg_is2("RESONANCE 9"));
+    bad += check("KNOB 2: the resonance (9), said in the header", hc.t[0].res == 9u && hcfx.res == 9u && msg_is2("RESO 9"));
     turn(EN_K3, -3);
     bad += check("KNOB 3: the attack fine-tuned, said", hc.t[0].atk != 0u && hui.msg_t && !memcmp(hui.msg, "ATTACK ", 7));
     turn(EN_K4, 5);
@@ -209,20 +317,8 @@ static int test_mode_menu_knobs(void)
     bad += check("OCT+ on HOME: the octave", song.octave == 1);
     press(B_OCTDN); press(B_OCTDN); press(B_OCTDN);
     bad += check("  OCT- thrice: -2 (the floor)", song.octave == -2);
-    press(B_ENV);
-    bad += check("ENV: the ENVELOPE list opens, the choice unchanged", hui.screen == HU_PICK && hui.pick_kind == PK_ENV &&
-                 hui.pick_sticky && hc.t[0].env == HE_LONG);
-    turn(EN_SELECT, 1);
-    bad += check("  SELECT: the next envelope (SHORT), applied, the list stays", hc.t[0].env == HE_SHORT && hui.screen == HU_PICK);
-    press(B_ENV);
-    bad += check("  ENV again: back to HOME", hui.screen == HU_HOME);
-    press(B_LFO);
-    turn(EN_SELECT, 1);
-    bad += check("LFO: its list, SELECT: vibrato LOW", hui.screen == HU_PICK && hui.pick_kind == PK_LFO && hc.t[0].lfo == HLF_LOW);
-    press(B_HOME);
-    bad += check("  HOME closes it", hui.screen == HU_HOME);
     turn(EN_PRESET, 1);
-    bad += check("PRESETS knob: the sound list shows while it turns", hui.screen == HU_PICK && hui.pick_kind == PK_SOUND && !hui.pick_sticky);
+    bad += check("PRESETS knob: the sound list shows while it turns", hui.screen == HU_PICK && hui.pick_kind == PK_SOUND);
     turn(EN_SELECT, 1);
     bad += check("  SELECT moves it too (the next sound)", hc.t[0].sound == 3u);
     fm1_ms += 1600; frame();
@@ -230,22 +326,45 @@ static int test_mode_menu_knobs(void)
     turn(EN_ALGO, 1); turn(EN_ALGO, -1);
     bad += check("ALGORITHM knob: the layers' list", hui.screen == HU_PICK && hui.pick_kind == PK_LAYER && song.sel == 0u);
     press(B_OCTUP);
-    bad += check("  a button closes it and acts as on HOME (the octave)", hui.screen == HU_HOME && song.octave == -1);
+    bad += check("  a button closes it and acts on the screen under it (HOME: the octave)", hui.screen == HU_HOME && song.octave == -1);
     press(B_OCTDN); turn(EN_PRESET, -2);
     fm1_ms += 1600; frame();
+    press(B_FX); press(B_FX);
+    turn(EN_PRESET, 1);
+    bad += check("PRESETS knob on a menu: the list over it ..", hui.screen == HU_PICK && hui.pick_back == HU_SOUND);
+    fm1_ms += 1600; frame();
+    bad += check("  .. and back to the page after", on_page(HU_SOUND, HU_PG_AMP));
+    turn(EN_PRESET, -1);
+    fm1_ms += 1600; frame();
+    press(B_HOME);
     press(B_ARP);
-    bad += check("ARP: ARP mode", hc.t[0].play == HP_ARP);
+    bad += check("ARP on PLAY: the style before, round (EAR), on HOME", hc.t[0].play == HP_EAR && hui.screen == HU_HOME);
     press(B_ARP);
-    bad += check("  again: PLAY", hc.t[0].play == HP_PLAY);
-    /* tap tempo: EDIT three times, 500 ms apart (frames are 16 ms), after a pause (the MODE press above was a tap) */
-    song.g[G_BPM] = 100;
-    hframes(110);
-    for (i = 0; i < 3u; i++) {
-        press(B_EDIT);
-        hframes(29);                                      /* 2 frames of the press + 29 = 31 x 16 = 496 ms */
+    bad += check("  again: HIRO", hc.t[0].play == HP_HIRO);
+    press(B_EDIT); press(B_EDIT);
+    bad += check("  EDIT twice: PLAY again", hc.t[0].play == HP_PLAY);
+    {   /* EDIT taps are no tap tempo any more (they walk the styles); GLO held + key 16 is */
+        song.g[G_BPM] = 100;
+        hframes(110);
+        for (i = 0; i < 3u; i++) {
+            press(B_EDIT);
+            hframes(29);                                  /* 2 frames of the press + 29 = 31 x 16 = 496 ms */
+        }
+        bad += check("EDIT tapped three times 500 ms apart: no tap tempo, three styles on", song.g[G_BPM] == 100 && hc.t[0].play == HP_DRONE);
+        hui_mode_set(t, HP_PLAY);
+        press(B_HOME);
+        fm1_in.buttons |= 1u << panel.btn[B_GLO];
+        host_pressed |= 1u << panel.btn[B_GLO];
+        hframes(2);
+        for (i = 0; i < 3u; i++) {
+            key_down(white(15)); hframes(1); key_up(white(15));
+            hframes(30);
+        }
+        fm1_in.buttons &= ~(1u << panel.btn[B_GLO]);
+        hframes(2);
+        bad += check("GLO held + white key 16 three times 500 ms apart: ~120 BPM (tap tempo)",
+                     song.g[G_BPM] >= 116 && song.g[G_BPM] <= 124);
     }
-    bpm = (uint32_t)song.g[G_BPM];
-    bad += check("EDIT tapped three times 500 ms apart: ~120 BPM (tap tempo)", bpm >= 116u && bpm <= 124u);
     press(B_HOME);
     return bad;
 }
@@ -264,10 +383,16 @@ static int test_presets(void)
     song.g[G_BPM] = 98;
     hc_apply(t);
     press(B_SAVE);
-    bad += check("SAVE: the PRESETS menu, P1 empty", hui.screen == HU_PRESET && val_is(HU_PRESET, 0, "EMPTY"));
-    turn(EN_SELECT, 1);
+    {
+        char sub[20];
+        hui_card_sub(HK_SLOT, sub);
+        bad += check("SAVE: PRESETS, P1 empty, SAVE armed", hui.screen == HU_PRESET && card_is(HK_SLOT, "P1") && str_eq(sub, "EMPTY") &&
+                     hui.armed == HK_SAVE);
+    }
     press(B_SAVE);
-    bad += check("SAVE again on P2: saved", msg_is2("SAVED P2") && hui.preset_used[1] && project_used(1));
+    bad += check("SAVE again: P2, SAVE still armed", card_is(HK_SLOT, "P2") && hui.armed == HK_SAVE);
+    press(B_OCTUP);
+    bad += check("  OCT+: saved to P2, nothing armed after", msg_is2("SAVED P2") && hui.preset_used[1] && project_used(1) && !hui.armed);
     hc_sound_load(t, 1);                                 /* SAW: everything else changes */
     hc.t[0].rev = HRV_OFF;
     hc.t[0].mode = HM_DEFAULT;
@@ -276,14 +401,21 @@ static int test_presets(void)
     hui_key_set(0);
     song.g[G_BPM] = 120;
     hc_apply(t);
+    turn(EN_K2, 1);
+    bad += check("KNOB 2: LOAD armed", hui.armed == HK_LOAD);
     press(B_OCTUP);
-    bad += check("OCT+ on P2: loaded: PIANO, PLATE, BORROW, the inversion and the lock, key G, 98 BPM",
+    bad += check("  OCT+: P2 loaded: PIANO, PLATE, BORROW, the inversion and the lock, key G, 98 BPM",
                  msg_is2("PRESET P2") && hc.t[0].sound == 14u && t->eng_req == 4u && hc.t[0].rev == HRV_PLATE &&
                  hc.t[0].mode == HM_BORROW && hc.inv[0] == 2u && hc.lock[9].on && hc.lock[9].q == HQ_DOM7 &&
                  t->p[P_ROOT] == 7 && song.g[G_BPM] == 98 && t->p[P_CHRD] == CH_HI);
     bad += check("  .. and the Felucca parameters follow (the PLATE send)", t->p[P_REV] == 60);
-    turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("OCT+ on an empty slot: EMPTY", msg_is2("EMPTY"));
+    turn(EN_SELECT, 1); turn(EN_K2, 1); press(B_OCTUP);
+    bad += check("SELECT: P3; LOAD on an empty slot: EMPTY", card_is(HK_SLOT, "P3") && msg_is2("EMPTY"));
+    turn(EN_K4, 1);
+    press(B_OCTDN);
+    bad += check("SAVE armed, OCT-: let be (not saved, the octave kept)", !hui.preset_used[2] && !hui.armed && song.octave == 0);
+    turn(EN_K4, 1); turn(EN_K4, -1);
+    bad += check("  turned back left: disarmed", !hui.armed);
     {   /* the preset bytes survive a settings round trip (settings_persist.c) */
         persist_t p;
         memset(&p, 0, sizeof p);
@@ -300,16 +432,29 @@ static int test_presets(void)
 static int test_draw_and_handover(void)
 {
     int bad = 0;
-    uint32_t s, ok = 1;
+    uint32_t s, p, ok = 1, fits = 1, k;
     hui_power_on();
     for (s = 0; s < HU_N; s++) {                         /* every screen draws (no crash, the stub display touched) */
-        hui.screen = (uint8_t)s;
-        hui.force = 1;
-        memset(host_screen, 0, sizeof host_screen);
-        hframes(2);
-        ok &= host_screen[120 * 240 + 120] != 0u || host_screen[10 * 240 + 10] != 0u;
+        if (s == HU_MODE)
+            continue;                                    /* (no screen: EDIT steps the style) */
+        for (p = 0; p < (hui_paged(s) ? HU_SEC[s].n : 1u); p++) {
+            hui.screen = (uint8_t)s;
+            hui.page[s] = (uint8_t)p;
+            hui.force = 1;
+            memset(host_screen, 0, sizeof host_screen);
+            hframes(2);
+            ok &= host_screen[120 * 240 + 120] != 0u || host_screen[10 * 240 + 10] != 0u;
+        }
     }
-    bad += check("every screen draws", ok);
+    bad += check("every screen and every page draws", ok);
+    for (k = 1; k < HK_N; k++)
+        if (text_w(&AF_S, HK_NAME[k]) > 52) {
+            printf("  the card name %s is %d px wide\n", HK_NAME[k], text_w(&AF_S, HK_NAME[k]));
+            fits = 0;
+        }
+    bad += check("every card's name fits its card (52 px)", fits);
+    for (s = 0; s < HU_N; s++)
+        memset(&hui.page[s], 0, 1);
     hui.screen = HU_HOME;
     key_down(0); key_down(10);
     hframes(2);
@@ -342,7 +487,7 @@ static int test_draw_and_handover(void)
 }
 
 /* the footer's hints stay inside the screen: nothing drawn in the 4 px right margin (as the 4 px left one), on
- * every screen and on the SOUND menu's effect rows (KNOB 4 = AMOUNT) */
+ * every screen, every page, with an action armed, and on MODE in every style */
 static int foot_fits(void)
 {
     uint32_t x, y;
@@ -359,25 +504,33 @@ static int foot_fits(void)
 static int test_footer_fits(void)
 {
     int bad = 0;
-    uint32_t s, r, ok = 1, fx = 0;
+    uint32_t s, p, ok = 1;
     char b[64];
     hui_power_on();
-    for (s = 0; s < HU_N; s++) {
-        hui.screen = (uint8_t)s;
-        if (!foot_fits()) {
-            snprintf(b, sizeof b, "  the footer of screen %u runs into the right margin", s);
-            bad += check(b, 0);
-            ok = 0;
+    for (s = 0; s < HU_N; s++)
+        for (p = 0; p < (hui_paged(s) ? HU_SEC[s].n : 1u) && s != HU_MODE; p++) {
+            hui.screen = (uint8_t)s;
+            hui.page[s] = (uint8_t)p;
+            if (!foot_fits()) {
+                snprintf(b, sizeof b, "  the footer of screen %u page %u runs into the right margin", s, p);
+                bad += check(b, 0);
+                ok = 0;
+            }
         }
+    hui.screen = HU_PRESET;
+    hui.armed = HK_SAVE;
+    ok &= foot_fits();
+    hui.screen = HU_LOOP;
+    hui.armed = HK_CLEAR;
+    ok &= foot_fits();
+    hui.armed = 0;
+    hui.screen = HU_HOME;                                /* HOME's knob row, in every style */
+    for (p = 0; p < HU_NSTYLES; p++) {
+        hui_mode_set(TSEL, HU_STYLE[p]);
+        ok &= foot_fits();
     }
-    hui.screen = HU_SOUND;
-    for (r = 0; r < RS_N; r++)
-        if (hui_fx_row(r)) {
-            hui.sel[HU_SOUND] = (uint8_t)r;
-            ok &= foot_fits();
-            fx++;
-        }
-    bad += check("the footer fits the screen on every screen and on the effect rows", ok && fx);
+    hui_mode_set(TSEL, HP_PLAY);
+    bad += check("the footer fits the screen on every screen and page, HOME's knobs in every style, and with an action armed", ok);
     hui.screen = HU_HOME;
     return bad;
 }
@@ -417,8 +570,8 @@ static int test_looper(void)
     hc.t[0].stereo = 0;
     hc_apply(&trk[0]);
     press(B_SEQ);
-    bad += check("SEQ: the LOOPER screen, every layer OFF, layer 1 live, BARS FREE", hui.screen == HU_LOOP &&
-                 val_is(HU_LOOP, RL_L1, "OFF LIVE") && val_is(HU_LOOP, RL_L2, "OFF") && val_is(HU_LOOP, RL_BARS, "FREE"));
+    bad += check("SEQ: the LOOPER page, every layer OFF, BARS FREE, CLEAR on KNOB 4", hui.screen == HU_LOOP &&
+                 hcl.l[0].state == HLS_OFF && hcl.l[1].state == HLS_OFF && card_is(HK_BARS, "FREE") && hui_page()->card[3] == HK_CLEAR);
     press(B_HOME);
     press(B_REC);
     bad += check("REC: layer 1 ARMED", hcl.l[0].state == HLS_ARMED && msg_is2("LAYER 1 ARMED"));
@@ -465,15 +618,14 @@ static int test_looper(void)
     press(B_PLAY);
     bad += check("PLAY again: running", hcl.playing);
     press(B_SEQ);
-    turn(EN_SELECT, 0);
-    bad += check("the LOOPER screen: layers PLAY PLAY OFF OFF", val_is(HU_LOOP, RL_L1, "PLAY") && val_is(HU_LOOP, RL_L2, "PLAY") &&
-                 val_is(HU_LOOP, RL_L3, "OFF") && val_is(HU_LOOP, RL_L4, "OFF"));
-    hui.sel[HU_LOOP] = RL_L2; press(B_OCTDN);
-    bad += check("OCT- on layer 2: cleared", hcl.l[1].state == HLS_OFF && hcl.l[1].n == 0u);
-    hui.sel[HU_LOOP] = RL_CLEAR; press(B_OCTUP);
-    bad += check("CLEAR ALL: no loop, the transport stopped", hcl.len == 0u && !hcl.playing && msg_is2("ALL CLEARED"));
-    hui.sel[HU_LOOP] = RL_BARS; press(B_OCTUP); press(B_OCTUP);
-    bad += check("BARS: 2", hcl.bars == 2u && val_is(HU_LOOP, RL_BARS, "2"));
+    bad += check("the LOOPER page: layers PLAY PLAY OFF OFF, drawn as the strip", hui.screen == HU_LOOP && hcl.l[0].state == HLS_PLAY &&
+                 hcl.l[1].state == HLS_PLAY && hcl.l[2].state == HLS_OFF && hcl.l[3].state == HLS_OFF);
+    turn(EN_K4, 1);
+    bad += check("KNOB 4: CLEAR armed, nothing cleared yet", hui.armed == HK_CLEAR && hcl.len != 0u);
+    press(B_OCTUP);
+    bad += check("  OCT+: no loop, the transport stopped", hcl.len == 0u && !hcl.playing && msg_is2("ALL CLEARED") && !hui.armed);
+    turn(EN_K1, 2);
+    bad += check("KNOB 1: BARS 2", hcl.bars == 2u && card_is(HK_BARS, "2"));
     press(B_HOME);
     track_select(0);
     press(B_REC); press(B_REC);
@@ -525,10 +677,8 @@ static int test_seq_drums_mixer(void)
     bad += check("  step 4: the rest, silence", hcs.step == 3u && gated_on(0) == 0u);
     run_ms2(500);
     bad += check("  round: step 1 again", hcs.step == 0u && gate_on(0, 48));
-    press(B_EDIT);
-    hui.sel[HU_MODE] = RM_SEQLEN; press(B_OCTUP);
-    bad += check("SEQ LENGTH: 8", hcs.len == 8u && val_is(HU_MODE, RM_SEQLEN, "8 STEPS"));
-    press(B_HOME);
+    turn(EN_K1, 1);
+    bad += check("SEQ on HOME: KNOB 1 the LENGTH: 8, said", hcs.len == 8u && card_is(HK_SEQLEN, "8") && msg_is2("LENGTH 8"));
     press(B_PLAY);
     bad += check("PLAY again: stopped, silent", !hcs.running && gated_on(0) == 0u);
     press(B_PLAY);
@@ -557,8 +707,7 @@ static int test_seq_drums_mixer(void)
     run_ms2(1100);                                     /* ~2 beats */
     bad += check("AUTO-DRUM: the kick held with a direction repeats (2 more hits in 2 beats)", midi_ons() >= hits + 2u);
     key_up(0); key_up(8);
-    press(B_EDIT);
-    hui.sel[HU_MODE] = RM_KIT; press(B_OCTUP);
+    turn(EN_K1, 1);
     bad += check("DRUM KIT: HAND -> the engine's KIT", hc.t[0].kit == 1u && t->p[P_E0] == 1);
     press(B_HOME);
     hui_mode_set(t, HP_PLAY);
@@ -626,14 +775,12 @@ static int test_games(void)
     bad += check("  the wrong chord: MISS", hcg.last == HGR_MISS && hcg.miss == 2u);
     for (i = 0; i < 5u; i++) run_ms2(2000);
     bad += check("  the song ends by itself (done)", hcg.done && !hcg.running);
-    press(B_EDIT);
-    hui.sel[HU_MODE] = RM_DIFF; press(B_OCTUP);
-    bad += check("DIFFICULTY: HARD", hcg.diff == HGD_HARD && val_is(HU_MODE, RM_DIFF, "HARD"));
-    hui.sel[HU_MODE] = RM_SPEED; press(B_OCTDN);
-    bad += check("PRACTICE SPEED: 90 %", hcg.speed == 90u);
-    hui.sel[HU_MODE] = RM_SONG; press(B_OCTUP);
-    bad += check("HIRO SONG: DOO-WOP", hcg.song == 1u && val_is(HU_MODE, RM_SONG, "DOO-WOP"));
-    press(B_HOME);
+    turn(EN_K2, 1);
+    bad += check("HIRO on HOME: KNOB 2 the DIFFICULTY: HARD", hcg.diff == HGD_HARD && card_is(HK_DIFF, "HARD"));
+    turn(EN_K3, -1);
+    bad += check("  KNOB 3 the PRACTICE SPEED: 90 %", hcg.speed == 90u);
+    turn(EN_K1, 1);
+    bad += check("  KNOB 1 the SONG: DOO-WOP", hcg.song == 1u && card_is(HK_SONG, "DOO-WOP"));
     /* EAR TRAINER: level 1 */
     hui_mode_set(t, HP_EAR);
     hcg.level = 0;
@@ -683,34 +830,23 @@ static int test_fx_amount(void)
     track_t *t = &trk[0];
     hc_trk_t *c = &hc.t[0];
     hui_power_on();
-    hui_open(HU_SOUND);
-    hui.sel[HU_SOUND] = RS_REV;
+    hui_open_page(HU_SOUND, 2);
     c->rev = HRV_HALL; hc_apply(t);
-    bad += check("REVERB row: the type and the amount in effect (HALL 65)", val_is(HU_SOUND, RS_REV, "HALL 65") && t->p[P_REV] == 65);
-    turn(EN_K4, 3);
-    bad += check("  KNOB 4 on the row: the amount (77), the send follows", c->rev_amt == 77u && t->p[P_REV] == 77 &&
-                 val_is(HU_SOUND, RS_REV, "HALL 77"));
-    turn(EN_K4, -40);
+    bad += check("SPACE: REVERB HALL, its AMOUNT the one in effect (65)", card_is(HK_REV, "HALL") && card_is(HK_REV_AMT, "65") && t->p[P_REV] == 65);
+    turn(EN_K2, 3);
+    bad += check("  KNOB 2: the amount (77), the send follows", c->rev_amt == 77u && t->p[P_REV] == 77 && card_is(HK_REV_AMT, "77"));
+    turn(EN_K2, -40);
     bad += check("  down to the floor of 1", c->rev_amt == 1u && t->p[P_REV] == 1);
     c->rev = 0; c->rev_amt = 0; hc_apply(t);
-    bad += check("  OFF: the type alone", val_is(HU_SOUND, RS_REV, "OFF") && t->p[P_REV] == 0);
-    turn(EN_K4, 1);
-    bad += check("  KNOB 4 on an OFF effect: on at its first type, the amount", c->rev == HRV_ROOM && c->rev_amt == 54u);
-    hui.sel[HU_SOUND] = RS_TREM;
-    c->trem = 2; c->trem_amt = 0; hc_apply(t);
-    turn(EN_K4, -5);
-    bad += check("TREMOLO row: KNOB 4 is the depth (90 - 20)", c->trem_amt == 70u && t->p[P_LD_AMP] == 70);
-    hui.sel[HU_SOUND] = RS_FLG;
-    c->flg = 1; hc_apply(t);
-    turn(EN_K4, 2);
-    bad += check("FLANGER row: KNOB 4 is the wet amount (64 + 8), hcfx follows", c->flg_amt == 72u && hcfx.flg_amt == 72u);
-    hui.sel[HU_SOUND] = RS_SOUND;
+    bad += check("  OFF: no amount", card_is(HK_REV, "OFF") && card_is(HK_REV_AMT, "-") && t->p[P_REV] == 0);
+    turn(EN_K2, 1);
+    bad += check("  the AMOUNT of an OFF effect: on at its first type, the amount", c->rev == HRV_ROOM && c->rev_amt == 54u);
     {
         uint32_t rel = c->rel;
         turn(EN_K4, 1);
-        bad += check("any other row: KNOB 4 is the release", c->rel != rel);
+        bad += check("  KNOB 4 on a page: its card (the delay's amount), not the release", c->rel == rel && c->dly != 0u);
     }
-    c->rev = 0; c->rev_amt = 0; c->trem = 0; c->trem_amt = 0; c->flg = 0; c->flg_amt = 0; hc_apply(t);
+    c->rev = 0; c->rev_amt = 0; c->dly = 0; c->dly_amt = 0; hc_apply(t);
     hui_open(HU_HOME);
     return bad;
 }
@@ -855,12 +991,7 @@ static int test_layers(void)
     hl_down_btn(B_GLO); hl_tap_key(white(1)); hl_up_btn(B_GLO);
     bad += check("  again: unmuted", !trk[1].p[P_MUTE]);
     press(B_GLO);
-    bad += check("GLO tapped: the MIX screen", hui.screen == HU_MIX);
-    {
-        int16_t lv = trk[0].p[P_LEVEL];
-        press(B_OCTDN);
-        bad += check("  OCT-: the selected layer's level down", trk[0].p[P_LEVEL] == lv - 8);
-    }
+    bad += check("GLO tapped: the MIX page", on_page(HU_MIX, 0));
     press(B_HOME);
     hl_down_btn(B_SAVE);
     hl_tap_key(white(4));
@@ -889,11 +1020,9 @@ static int test_layers(void)
         hui_live_restore();
         bad += check("a saved MIXER style: PLAY now", hc.t[2].play == HP_PLAY);
     }
-    hui.sel[HU_MODE] = RM_MODE;
-    press(B_EDIT); hframes(40);
     for (uint32_t i = 0; i < HU_NSTYLES + 1u; i++)
-        press(B_OCTUP);
-    bad += check("the MODE menu's MODE row: the 11 styles round, no MIXER", hc.t[0].play == HP_STRUM);
+        press(B_EDIT);
+    bad += check("EDIT again and again: the 11 styles round, no MIXER", hc.t[0].play == HP_STRUM);
     press(B_HOME);
     return bad;
 }
@@ -966,7 +1095,7 @@ static int test_loop_kept(void)
 
 int main(void)
 {
-    int bad = test_slash_first_thing() + test_boot_and_menus() + test_key_menu() + test_sound_menu() + test_mode_menu_knobs() + test_presets() +
+    int bad = test_slash_first_thing() + test_boot_and_menus() + test_key_menu() + test_sound_menu() + test_mix_menu() + test_mode_menu_knobs() + test_presets() +
               test_draw_and_handover() + test_looper() + test_seq_drums_mixer() + test_games() + test_live_persist() +
               test_fx_amount() + test_drums_under_chords() + test_layers() + test_loop_kept() + test_footer_fits();
     printf("%s\n", bad ? "HUI TEST FAILED" : "chord machine ui test passed");

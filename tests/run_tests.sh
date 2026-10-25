@@ -117,7 +117,7 @@ if [ -f build/gen/felucca_tables.h ]; then
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/chordmachine_test" tests/chordmachine_test.c -lm
     run "chord machine keys (CHRD HI): degrees, the four modifier tables, revoicing, INVERT / LOCK / HOLD, BASS, VOICES, leading, MIDI IN" "$OUT/chordmachine_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/hui_test" tests/hui_test.c -lm
-    run "chord machine UI (hui.c): power-on, the KEY / SOUND / MODE menus and every row, the knobs, tap tempo, presets P1..P4, the hand-over" "$OUT/hui_test"
+    run "chord machine UI (hui.c): power-on, the menus' pages and every card, the knobs, tap tempo, presets P1..P4, the hand-over" "$OUT/hui_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/speaker_test" tests/speaker_test.c -lm
     run "SPEAKER BASS+: harmonics of the bass, the sub cut, no offset after" "$OUT/speaker_test"
     run "DSP render (ANALOG preset 0)" "$OUT/hostsim" 0 0 1 "$OUT/render.wav"

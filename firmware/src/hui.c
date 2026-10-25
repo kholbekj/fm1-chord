@@ -1,16 +1,19 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 fm1-chord contributors */
 /* The chord machine user interface on the FM-1's 240 x 240 screen: HOME (the chord played, big; the key, the mode,
- * the tempo; the keys as a keyboard; the sound and its effects) and three menus as a chord machine has them,
- * colour-coded: KEY (SCL, grey), SOUND (FX, yellow: the sounds, the effects, the settings), MODE (EDIT, red:
- * the play modes and the tempo), and PRESETS (SAVE: P1..P4). Every option of the chord machine's menus and no
- * other. Felucca's own UI stays underneath (HOME held: the advanced synth; SAVE + HOME: back).
- *   SELECT    the cursor of a menu; on HOME the key
- *   OCT- / +  the value of the row (a menu); the octave (HOME); both: RANDOMIZE (ALL on KEY, the sound on
- *             SOUND, the pattern on MODE)
- *   ALGORITHM the play mode, PRESETS the sound, KNOB 1 the FILTER wheel, KNOB 2 RESONANCE, KNOB 3 ATTACK, KNOB 4 RELEASE,
- *             the value shown in the header as it turns (KNOB 4 on a SOUND effect row: the amount): on every screen
- *   ENV / LFO the envelope preset / the vibrato; ARP: ARP mode and back; EDIT tapped three times: tap tempo
+ * the tempo; the keys as a keyboard; the sound and its effects) and the menus, colour-coded, each a few pages of
+ * four cards after JIANT (KNOB 1..4 the four cards): KEY (SCL, grey), SOUND (FX, yellow: the tone and the effects),
+ * MIX (GLO: the levels, the tempo, the setup), LOOPER (SEQ) and PRESETS (SAVE: P1..P4); EDIT steps the play style,
+ * whose own settings are HOME's knobs. Felucca's own UI stays underneath (HOME held: the advanced synth; SAVE + HOME: back).
+ *   SELECT    a menu's pages (PRESETS: the slot); on HOME the key
+ *   a menu's  tapped: into its menu, on the page left there; tapped again: the next page, round (PRESETS the next
+ *   button    slot, LOOPER back HOME); EDIT tapped: the next play style; held: its layer (keys and knobs)
+ *   KNOB 1..4 on a menu its four cards; on HOME the style's four (HU_HOME_KNOBS: the filter and the envelope while
+ *             it plays the sound, ARP its pattern, LOOPS its loop ..), named along the foot
+ *   OCT- / +  the octave; on an armed action card (CLEAR, LOAD, SAVE) OCT+ does it, OCT- lets it be; both:
+ *             RANDOMIZE (ALL; the sound on SOUND, the pattern on MODE)
+ *   ALGORITHM the layer, PRESETS the sound: on every screen, their list shown while they turn
+ *   ENV / LFO SOUND's AMP / WOBBLE page (again: HOME); ARP: the play style before (EDIT the next)
  * Included after Felucca's ui*.c (it uses their drawing, sounds and projects); ui_input / ui_draw / ui_leds
  * hand over to hui_* while hui.on. */
 
@@ -55,16 +58,8 @@ static const char *const HP_SHORT[HP_COUNT] = {"PLAY", "STRUM", "LEAD", "DRONE",
 
 /* ------------------------------------------------------------- state --- */
 enum { HU_HOME, HU_KEY, HU_SOUND, HU_MODE, HU_PRESET, HU_LOOP, HU_PICK, HU_MIX, HU_N };   /* HU_PICK: a list (hui_pick_*) */
-enum { RL_L1, RL_L2, RL_L3, RL_L4, RL_BARS, RL_METRO, RL_CLEAR, RL_N };   /* (RL_L1 + HCL_LAYERS - 1 = RL_L4) */
-enum { RK_KEY, RK_OCT, RK_SCALE, RK_LAYOUT, RK_JOY, RK_BASS, RK_VOICES, RK_VLEAD, RK_RANDOM, RK_N };
-enum { RS_SOUND, RS_ENV, RS_ATK, RS_REL, RS_FILT, RS_CUT, RS_RES, RS_HP, RS_REV, RS_DLY, RS_CHO, RS_FLG, RS_TREM, RS_LFO,
-       RS_GLIDE, RS_DRIVE, RS_TAPE, RS_STEREO, RS_SPK, RS_OUT, RS_MIDIIN, RS_THEME, RS_RANDOM, RS_N };
-enum { RM_MODE, RM_BPM, RM_STRUM, RM_APAT, RM_ARATE, RM_ALAYER, RM_SEQLEN, RM_KIT, RM_DLSTYLE, RM_DLVAR, RM_SONG, RM_DIFF,
-       RM_SPEED, RM_LEVEL, RM_RANDOM, RM_N };
-static const char *const HU_TITLE[HU_N] = {"", "KEY", "SOUND", "MODE", "PRESETS", "LOOPER", "", "MIX"};
 static const uint8_t HU_ROLE[HU_N] = {0, UR_KEY, UR_SOUND, UR_MODE, UR_PRESET, UR_LOOP, 0, UR_LOOP};
 #define HU_COL(sc) T_ROLE(HU_ROLE[sc])
-static const uint8_t HU_ROWS[HU_N] = {0, RK_N, RS_N, RM_N, 4, RL_N, 0, 0};
 /* the play styles a layer can have (EDIT held + a white key, the MODE menu), in the chord machine's order; MIXER
  * is a screen now (GLO), not a style */
 static const uint8_t HU_STYLE[] = {HP_PLAY, HP_STRUM, HP_LEAD, HP_DRONE, HP_ARP, HP_REPEAT, HP_SEQ, HP_DRUM, HP_DRUMLOOP,
@@ -72,15 +67,68 @@ static const uint8_t HU_STYLE[] = {HP_PLAY, HP_STRUM, HP_LEAD, HP_DRONE, HP_ARP,
 #define HU_NSTYLES ((uint32_t)sizeof HU_STYLE)
 /* each layer's own colour (its chip, its row): four of the palette's degree colours */
 #define HU_LCOL(i) T_DEG((uint32_t)"\x04\x03\x01\x06"[(i) & 3u])
-static const char *const RL_LABEL[RL_N] = {"LAYER 1", "LAYER 2", "LAYER 3", "LAYER 4", "BARS", "METRONOME", "CLEAR ALL"};
-static const char *const RK_LABEL[RK_N] = {"KEY", "OCTAVE", "SCALE", "LAYOUT", "JOYSTICK", "BASS", "VOICES", "VOICE LEAD",
-                                           "RANDOMIZE ALL"};
-static const char *const RS_LABEL[RS_N] = {"SOUND", "ENVELOPE", "ATTACK", "RELEASE", "FILTER WHEEL", "CUTOFF", "RESONANCE", "HI-PASS",
-                                           "REVERB", "DELAY", "CHORUS", "FLANGER", "TREMOLO", "LFO", "GLIDE", "DRIVE", "TAPE",
-                                           "STEREO", "SPEAKER", "OUT LEVEL", "MIDI IN", "THEME", "RANDOMIZE SOUND"};
-static const char *const RM_LABEL[RM_N] = {"MODE", "TEMPO", "STRUM SPEED", "ARP PATTERN", "ARP RATE", "ARP LAYER",
-                                           "SEQ LENGTH", "DRUM KIT", "LOOP STYLE", "LOOP VARIATION", "HIRO SONG", "DIFFICULTY",
-                                           "PRACTICE SPEED", "EAR LEVEL", "RANDOMIZE PATTERN"};
+
+/* ------------------------------------------------------ pages, cards --- */
+/* After JIANT: a menu is one chain of pages (in groups, the tabs), a page four cards, KNOB 1..4 the four. A card
+ * has a name, a value and a turn (hui_card_*); an action card (CLEAR, LOAD, SAVE) is armed by turning it right and
+ * done by OCT+. A play style's own settings are no menu's: they are HOME's knobs (HU_HOME_KNOBS) */
+enum { HK_NONE,
+       HK_KEY, HK_SCALE, HK_OCT, HK_LAYOUT, HK_BASS, HK_VOICES, HK_VLEAD, HK_JOY,
+       HK_FILT, HK_CUT, HK_RES, HK_HP, HK_ENV, HK_ATK, HK_REL, HK_GLIDE,
+       HK_REV, HK_REV_AMT, HK_DLY, HK_DLY_AMT, HK_CHO, HK_CHO_AMT, HK_FLG, HK_FLG_AMT, HK_TREM, HK_TREM_AMT,
+       HK_LFO, HK_STEREO, HK_DRIVE, HK_TAPE,
+       HK_STRUM, HK_APAT, HK_ARATE, HK_ALAYER, HK_SEQLEN, HK_KIT, HK_DLSTYLE, HK_DLVAR, HK_SONG, HK_DIFF,
+       HK_SPEED, HK_LEVEL,
+       HK_L1, HK_L2, HK_L3, HK_L4, HK_BPM, HK_METRO, HK_SPK, HK_OUT, HK_MIDIIN, HK_THEME,
+       HK_BARS, HK_CLEAR, HK_SLOT, HK_LOAD, HK_SAVE, HK_N };
+static const char *const HK_NAME[HK_N] = {"",
+    "KEY", "SCALE", "OCTAVE", "LAYOUT", "BASS", "VOICES", "V.LEAD", "JOYSTK",
+    "WHEEL", "CUTOFF", "RESO", "HI-PASS", "ENV", "ATTACK", "RELEASE", "GLIDE",
+    "REVERB", "AMOUNT", "DELAY", "AMOUNT", "CHORUS", "AMOUNT", "FLANGER", "AMOUNT", "TREM", "AMOUNT",
+    "VIBRATO", "STEREO", "DRIVE", "TAPE",
+    "SPEED", "PATTERN", "RATE", "LAYER", "LENGTH", "KIT", "LOOP", "VARIANT", "SONG", "DIFF",
+    "SPEED", "LEVEL",
+    "L1", "L2", "L3", "L4", "TEMPO", "METRO", "SPEAKER", "OUTPUT", "MIDI IN", "THEME",
+    "BARS", "CLEAR", "SLOT", "LOAD", "SAVE"};
+/* the cards that are no one layer's (the key, the sequencer, the games, the mix, the setup, the looper, the
+ * presets); the rest are the selected layer's, and a page with one of those names it in the header */
+static int hui_card_global(uint32_t k)
+{
+    return k <= HK_OCT || k == HK_SEQLEN || (k >= HK_SONG && k <= HK_LEVEL) || k >= HK_L1;
+}
+static int hui_card_action(uint32_t k) { return k == HK_CLEAR || k == HK_LOAD || k == HK_SAVE; }
+typedef struct { const char *name; uint8_t group, card[4]; } hu_page_t;
+static const hu_page_t HU_PG_KEY[] = {{"KEY", 0, {HK_KEY, HK_SCALE, HK_OCT, HK_LAYOUT}},
+                                      {"CHORD", 1, {HK_BASS, HK_VOICES, HK_VLEAD, HK_JOY}}};
+static const hu_page_t HU_PG_SOUND[] = {{"FILTER", 0, {HK_FILT, HK_CUT, HK_RES, HK_HP}},
+                                        {"AMP", 0, {HK_ENV, HK_ATK, HK_REL, HK_GLIDE}},
+                                        {"SPACE", 1, {HK_REV, HK_REV_AMT, HK_DLY, HK_DLY_AMT}},
+                                        {"MOTION", 1, {HK_CHO, HK_CHO_AMT, HK_FLG, HK_FLG_AMT}},
+                                        {"WOBBLE", 1, {HK_TREM, HK_TREM_AMT, HK_LFO, HK_STEREO}},
+                                        {"COLOUR", 1, {HK_DRIVE, HK_TAPE, 0, 0}}};
+enum { HU_PG_AMP = 1, HU_PG_WOBBLE = 4 };              /* (the ENV and LFO buttons' pages) */
+static const hu_page_t HU_PG_MIX[] = {{"MIX", 0, {HK_L1, HK_L2, HK_L3, HK_L4}},
+                                      {"TEMPO", 1, {HK_BPM, HK_METRO, 0, 0}},
+                                      {"SETUP", 2, {HK_SPK, HK_OUT, HK_MIDIIN, HK_THEME}}};
+static const hu_page_t HU_PG_LOOP[] = {{"LOOPER", 0, {HK_BARS, 0, 0, HK_CLEAR}}};
+static const hu_page_t HU_PG_PRESET[] = {{"PRESETS", 0, {HK_SLOT, HK_LOAD, 0, HK_SAVE}}};
+/* HOME's four knobs, the style's: the sound's filter and envelope where the style plays the sound, else what the
+ * style has (ARP its pattern, LOOPS its loop, HIRO its song ..), the tempo where it runs to the clock */
+static const uint8_t HU_HOME_KNOBS[HP_COUNT][4] = {
+    [HP_PLAY] = {HK_CUT, HK_RES, HK_ATK, HK_REL},        [HP_STRUM] = {HK_CUT, HK_RES, HK_STRUM, HK_REL},
+    [HP_LEAD] = {HK_CUT, HK_RES, HK_ATK, HK_REL},        [HP_DRONE] = {HK_CUT, HK_RES, HK_ATK, HK_REL},
+    [HP_ARP] = {HK_APAT, HK_ARATE, HK_ALAYER, HK_CUT},   [HP_REPEAT] = {HK_ARATE, HK_CUT, HK_RES, HK_REL},
+    [HP_SEQ] = {HK_SEQLEN, HK_CUT, HK_RES, HK_BPM},      [HP_DRUM] = {HK_KIT, HK_CUT, HK_RES, HK_BPM},
+    [HP_DRUMLOOP] = {HK_DLSTYLE, HK_DLVAR, HK_KIT, HK_BPM}, [HP_HIRO] = {HK_SONG, HK_DIFF, HK_SPEED, 0},
+    [HP_EAR] = {HK_LEVEL, 0, 0, 0},                      [HP_MIXER] = {HK_L1, HK_L2, HK_L3, HK_L4}};
+typedef struct { const char *title; const hu_page_t *pg; uint8_t n; const char *group[3]; } hu_sec_t;
+static const hu_sec_t HU_SEC[HU_N] = {
+    [HU_KEY] = {"KEY", HU_PG_KEY, 2, {"KEY", "CHORD"}},
+    [HU_SOUND] = {"SOUND", HU_PG_SOUND, 6, {"TONE", "EFFECTS"}},
+    [HU_PRESET] = {"PRESETS", HU_PG_PRESET, 1, {"PRESETS"}},
+    [HU_LOOP] = {"LOOPER", HU_PG_LOOP, 1, {"LOOPER"}},
+    [HU_MIX] = {"MIX", HU_PG_MIX, 3, {"MIX", "TEMPO", "SETUP"}}};
+static int hui_paged(uint32_t sc) { return sc < HU_N && HU_SEC[sc].title != 0; }
 static const char *const HC_OUT_NAME[2] = {"HOT", "LINE"};
 static const char *const HC_SPK_NAME[3] = {"FLAT", "LOWCUT", "BASS+"};
 
@@ -90,22 +138,23 @@ static const char *const HC_SPK_NAME[3] = {"FLAT", "LOWCUT", "BASS+"};
 static struct {
     uint8_t on;                  /* the chord machine UI is up (0: Felucca's) */
     uint8_t screen;              /* HU_* */
-    uint8_t sel[HU_N];           /* the cursor of each menu */
-    uint8_t top[HU_N];           /* the first row shown */
+    uint8_t page[HU_N];          /* the page each menu was left on */
+    uint8_t slot;                /* PRESETS: P1..P4 */
+    uint8_t armed;               /* the action card OCT+ does (HK_*; 0: none) */
     uint32_t sig[4];             /* drawn-state caches: header, body, strip, footer */
     uint8_t force;
     char msg[20];
     uint8_t msg_t;
     uint32_t home_t0;            /* HOME held (btn_hold) */
     uint32_t rec_t0;             /* REC held: clear the layer */
-    uint32_t tap_ms[4];          /* tap tempo: the EDIT taps */
+    uint32_t tap_ms[4];          /* tap tempo: the taps (GLO held, key 16) */
     uint8_t ntap;
     uint8_t midi_in;             /* the MIDI IN setting (chordmachine.c reads it) */
     uint8_t out_line;            /* OUT LEVEL: LINE (-10 dB) */
     uint32_t rnd;
     uint8_t preset_used[4];      /* P1..P4 hold something */
     uint8_t pick_kind;           /* HU_PICK: PK_* */
-    uint8_t pick_sticky;         /* opened by ENV / LFO (stays), else by a knob (goes 1.5 s after the last turn) */
+    uint8_t pick_back;           /* the screen under the list (it goes 1.5 s after the last turn) */
     uint32_t pick_ms;            /* the last turn */
     uint8_t ly;                  /* HL_*: the menu button held as a layer (0: none) */
     uint8_t ly_open;             /* its map shows */
@@ -157,55 +206,48 @@ static uint32_t hui_rand(uint32_t n)
 /* the live track's chord machine settings */
 static hc_trk_t *hui_c(void) { return &hc.t[song.sel]; }
 static void hui_apply(void) { hc_apply(TSEL); }
-static int hui_row_value(uint32_t sc, uint32_t row, char *b);   /* (below) */
+static int hui_card(uint32_t k, char *b, int32_t *frac);   /* (below) */
 /* a knob turned: its name and value in the header bar for a moment ("ATTACK 790ms") */
-static void hui_say_value(const char *label, uint32_t row)
+static void hui_say_value(const char *label, uint32_t k)
 {
     char v[20];
-    hui_row_value(HU_SOUND, row, v);
+    int32_t f;
+    hui_card(k, v, &f);
     str_cpy(hui.msg, label, sizeof hui.msg);
     str_cpy(hui.msg + str_len(hui.msg), " ", sizeof hui.msg - str_len(hui.msg));
     str_cpy(hui.msg + str_len(hui.msg), v, sizeof hui.msg - str_len(hui.msg));
     hui.msg_t = 70;
 }
 
-/* the effect rows with an amount (KNOB 4): REVERB, DELAY, CHORUS (their sends), FLANGER (its wet),
- * TREMOLO (its depth). The amount in effect: the one set, else the type's own */
-static int hui_fx_row(uint32_t row) { return row == RS_REV || row == RS_DLY || row == RS_CHO || row == RS_FLG || row == RS_TREM; }
-static uint32_t hui_fx_amount(const hc_trk_t *c, uint32_t row)
+/* the effects with an amount: REVERB, DELAY, CHORUS (their sends), FLANGER (its wet), TREMOLO (its depth), each
+ * its type card (HK_REV ..) and its AMOUNT card after it. The amount in effect: the one set, else the type's own */
+static uint32_t hui_fx_amount(const hc_trk_t *c, uint32_t k)
 {
     static const uint8_t REV_DEF[HRV_COUNT] = {0, 50, 65, 60, 60, 90}, CHO_DEF[HCH_COUNT] = {0, 40, 60, 85, 110};
-    switch (row) {
-    case RS_REV: return c->rev_amt ? c->rev_amt : REV_DEF[c->rev % HRV_COUNT];
-    case RS_DLY: return c->dly_amt ? c->dly_amt : 55u;
-    case RS_CHO: return c->cho_amt ? c->cho_amt : CHO_DEF[c->cho % HCH_COUNT];
-    case RS_FLG: return c->flg_amt ? c->flg_amt : 64u;
+    switch (k) {
+    case HK_REV: return c->rev_amt ? c->rev_amt : REV_DEF[c->rev % HRV_COUNT];
+    case HK_DLY: return c->dly_amt ? c->dly_amt : 55u;
+    case HK_CHO: return c->cho_amt ? c->cho_amt : CHO_DEF[c->cho % HCH_COUNT];
+    case HK_FLG: return c->flg_amt ? c->flg_amt : 64u;
     default: return c->trem_amt ? c->trem_amt : 90u;
     }
 }
-static uint8_t *hui_fx_amount_of(hc_trk_t *c, uint32_t row)
+static uint8_t *hui_fx_amount_of(hc_trk_t *c, uint32_t k)
 {
-    return row == RS_REV ? &c->rev_amt : row == RS_DLY ? &c->dly_amt : row == RS_CHO ? &c->cho_amt :
-           row == RS_FLG ? &c->flg_amt : &c->trem_amt;
+    return k == HK_REV ? &c->rev_amt : k == HK_DLY ? &c->dly_amt : k == HK_CHO ? &c->cho_amt :
+           k == HK_FLG ? &c->flg_amt : &c->trem_amt;
 }
-/* the row's value: the type, and the amount when the effect is on ("HALL 65") */
-static void hui_fx_value(char *b, const char *type, uint32_t on, uint32_t amount)
+static uint8_t *hui_fx_on(hc_trk_t *c, uint32_t k)
 {
-    str_cpy(b, type, 16);
-    if (on) {
-        uint32_t len = str_len(b);
-        b[len] = ' ';
-        fmt_int(b + len + 1u, (int32_t)amount);
-    }
+    return k == HK_REV ? &c->rev : k == HK_DLY ? &c->dly : k == HK_CHO ? &c->cho : k == HK_FLG ? &c->flg : &c->trem;
 }
-/* KNOB 4 on an effect row: the amount (an effect that is OFF comes on at its first type) */
-static void hui_fx_turn(hc_trk_t *c, uint32_t row, int32_t s)
+/* an AMOUNT card turned (an effect that is OFF comes on at its first type) */
+static void hui_fx_turn(hc_trk_t *c, uint32_t k, int32_t s)
 {
-    uint8_t *amt = hui_fx_amount_of(c, row);
-    uint8_t *on = row == RS_REV ? &c->rev : row == RS_DLY ? &c->dly : row == RS_CHO ? &c->cho : row == RS_FLG ? &c->flg : &c->trem;
+    uint8_t *amt = hui_fx_amount_of(c, k), *on = hui_fx_on(c, k);
     if (!*on)
         *on = 1;
-    *amt = (uint8_t)clamp((int32_t)hui_fx_amount(c, row) + s * 4, 1, 127);
+    *amt = (uint8_t)clamp((int32_t)hui_fx_amount(c, k) + s * 4, 1, 127);
 }
 
 /* the key (ROOT) and the scale are the chord machine's: global, every track's */
@@ -445,106 +487,6 @@ static void hui_random_all(void)
 
 /* ------------------------------------------------------- the values --- */
 /* the value of a row as text; 1 = the row is an action */
-static int hui_row_value(uint32_t screen, uint32_t row, char *b)
-{
-    const hc_trk_t *c = hui_c();
-    b[0] = 0;
-    switch (screen) {
-    case HU_KEY:
-        switch (row) {
-        case RK_KEY: str_cpy(b, HC_NOTE_NAME[(uint32_t)TSEL->p[P_ROOT] % 12u], 16); break;
-        case RK_OCT: str_cpy(b, song.octave > 0 ? "+" : "", 16); fmt_int(b + str_len(b), song.octave); break;
-        case RK_SCALE: str_cpy(b, HC_SCALE_NAME[hui_scale_get()], 16); break;
-        case RK_LAYOUT: str_cpy(b, HL_NAME[c->layout % 2u], 16); break;
-        case RK_JOY: str_cpy(b, HM_NAME[c->mode % HM_COUNT], 16); break;
-        case RK_BASS: str_cpy(b, HB_NAME[c->bass % 3u], 16); break;
-        case RK_VOICES: str_cpy(b, HV_NAME[c->voices % 4u], 16); break;
-        case RK_VLEAD: str_cpy(b, c->vlead ? "ON" : "OFF", 16); break;
-        default: return 1;
-        }
-        return 0;
-    case HU_SOUND:
-        switch (row) {
-        case RS_SOUND: str_cpy(b, HC_SOUNDS[c->sound % HC_NSOUNDS].name, 16); break;
-        case RS_ENV: str_cpy(b, HE_NAME[c->env % HE_COUNT], 16); break;
-        case RS_ATK: case RS_REL: {
-            const char *u;
-            param_format(&TP[row == RS_ATK ? P_ATK : P_REL], TSEL->p[row == RS_ATK ? P_ATK : P_REL], b, &u);
-            str_cpy(b + str_len(b), u, 16 - str_len(b));
-            break;
-        }
-        case RS_FILT: str_cpy(b, c->filt ? "ON" : "OFF", 16); break;
-        case RS_CUT: {
-            const char *u;
-            param_format(&(param_desc_t){"CUT", F_CUTOFF, 0, 127, 127, 0, 0}, c->cutoff, b, &u);
-            str_cpy(b + str_len(b), u, 16 - str_len(b));
-            break;
-        }
-        case RS_RES: fmt_int(b, c->res); break;
-        case RS_HP: str_cpy(b, c->hp ? "ON" : "OFF", 16); break;
-        case RS_REV: hui_fx_value(b, HRV_NAME[c->rev % HRV_COUNT], c->rev, hui_fx_amount(c, RS_REV)); break;
-        case RS_DLY: hui_fx_value(b, HDL_NAME[c->dly % HDL_COUNT], c->dly, hui_fx_amount(c, RS_DLY)); break;
-        case RS_CHO: hui_fx_value(b, HCH_NAME[c->cho % HCH_COUNT], c->cho, hui_fx_amount(c, RS_CHO)); break;
-        case RS_FLG: hui_fx_value(b, HFL_NAME[c->flg % HFL_COUNT], c->flg, hui_fx_amount(c, RS_FLG)); break;
-        case RS_TREM: hui_fx_value(b, HTR_NAME[c->trem % HTR_COUNT], c->trem, hui_fx_amount(c, RS_TREM)); break;
-        case RS_LFO: str_cpy(b, HLF_NAME[c->lfo % HLF_COUNT], 16); break;
-        case RS_GLIDE: str_cpy(b, HGL_NAME[c->glide % HGL_COUNT], 16); break;
-        case RS_DRIVE: str_cpy(b, HDR_NAME[c->drive % HDR_COUNT], 16); break;
-        case RS_TAPE: str_cpy(b, HTP_NAME[c->tape % HTP_COUNT], 16); break;
-        case RS_STEREO: str_cpy(b, c->stereo ? "ON" : "OFF", 16); break;
-        case RS_SPK: str_cpy(b, HC_SPK_NAME[settings.lowcut % 3u], 16); break;
-        case RS_OUT: str_cpy(b, HC_OUT_NAME[hui.out_line & 1u], 16); break;
-        case RS_THEME: str_cpy(b, UI_PALETTES[settings.palette % NPALETTES].name, 16); break;
-        case RS_MIDIIN: str_cpy(b, hui.midi_in ? "ON" : "OFF", 16); break;
-        default: return 1;
-        }
-        return 0;
-    case HU_MODE:
-        switch (row) {
-        case RM_MODE: str_cpy(b, HP_NAME[c->play % HP_COUNT], 16); break;
-        case RM_BPM: fmt_int(b, song.g[G_BPM]); str_cpy(b + str_len(b), " BPM", 16 - str_len(b)); break;
-        case RM_STRUM: str_cpy(b, HST_NAME[c->strum % 3u], 16); break;
-        case RM_APAT: str_cpy(b, HA_NAME[c->arp_pat % HA_COUNT], 16); break;
-        case RM_ARATE: str_cpy(b, HR_NAME[c->arp_rate % HR_COUNT], 16); break;
-        case RM_ALAYER: str_cpy(b, HAL_NAME[c->arp_layer % 3u], 16); break;
-        case RM_SEQLEN: fmt_int(b, hcs.len); str_cpy(b + str_len(b), " STEPS", 16 - str_len(b)); break;
-        case RM_KIT: str_cpy(b, N_DRUM_KIT[c->kit % 4u], 16); break;
-        case RM_DLSTYLE: str_cpy(b, DL_NAME[c->dl_style % DL_STYLES], 16); break;
-        case RM_DLVAR: str_cpy(b, DV_NAME[c->dl_var % DV_VARS], 16); break;
-        case RM_SONG: str_cpy(b, HCG_SONG[hcg.song % HG_SONGS].name, 16); break;
-        case RM_DIFF: str_cpy(b, HGD_NAME[hcg.diff % HGD_COUNT], 16); break;
-        case RM_SPEED: fmt_int(b, hcg.speed); str_cpy(b + str_len(b), "%", 16 - str_len(b)); break;
-        case RM_LEVEL: fmt_int(b, hcg.level + 1); break;
-        default: return 1;
-        }
-        return 0;
-    case HU_LOOP:
-        if (row < HCL_LAYERS) {
-            str_cpy(b, HLS_NAME[hcl.l[row].state & 3u], 16);
-            if (row == song.sel && hcl.l[row].state != HLS_PLAY)
-                str_cpy(b + str_len(b), " LIVE", 16 - str_len(b));
-        } else if (row == RL_BARS) {
-            if (hcl.bars) fmt_int(b, hcl.bars); else str_cpy(b, "FREE", 16);
-        } else if (row == RL_METRO) {
-            str_cpy(b, hcl.metro ? "ON" : "OFF", 16);
-        } else {
-            return 1;
-        }
-        return 0;
-    default:
-        if (hui.preset_used[row & 3u]) {
-            char nm[16];
-            if (project_name(row & 3u, nm) && nm[0])
-                str_cpy(b, nm, 16);
-            else
-                str_cpy(b, "SAVED", 16);
-        } else {
-            str_cpy(b, "EMPTY", 16);
-        }
-        return 0;
-    }
-}
-
 static uint32_t hui_cycle(uint32_t v, int32_t d, uint32_t n) { return (uint32_t)(((int32_t)v + d) % (int32_t)n + (int32_t)n) % n; }
 static uint32_t hui_style_index(uint32_t play)
 {
@@ -555,100 +497,189 @@ static uint32_t hui_style_index(uint32_t play)
     return 0;
 }
 
-/* OCT- / OCT+ on a row: its value, or its action */
-static void hui_row_change(uint32_t screen, uint32_t row, int32_t d)
+static const hu_page_t *hui_page_of(uint32_t sc, uint32_t i) { return &HU_SEC[sc].pg[i < HU_SEC[sc].n ? i : 0u]; }
+static const hu_page_t *hui_page(void) { return hui_page_of(hui.screen, hui.page[hui.screen]); }
+
+/* a time parameter's value as Felucca shows it ("790ms") */
+static void hui_time(char *b, uint32_t p)
+{
+    const char *u;
+    param_format(&TP[p], TSEL->p[p], b, &u);
+    str_cpy(b + str_len(b), u, 16 - str_len(b));
+}
+/* a value out of its range for a card's gauge (0..1000), or -1: no gauge */
+static int32_t hui_frac(int32_t v, int32_t lo, int32_t hi) { return hi > lo ? (int32_t)((v - lo) * 1000 / (hi - lo)) : -1; }
+
+/* a card's value into b ("HALL", "790ms", "65"), its gauge into *frac; 1 = an action card */
+static int hui_card(uint32_t k, char *b, int32_t *frac)
+{
+    const hc_trk_t *c = hui_c();
+    b[0] = 0;
+    *frac = -1;
+    switch (k) {
+    case HK_KEY: str_cpy(b, HC_NOTE_NAME[(uint32_t)TSEL->p[P_ROOT] % 12u], 16); break;
+    case HK_SCALE: str_cpy(b, HC_SCALE_NAME[hui_scale_get()], 16); break;
+    case HK_OCT: str_cpy(b, song.octave > 0 ? "+" : "", 16); fmt_int(b + str_len(b), song.octave); *frac = hui_frac(song.octave, -2, 2); break;
+    case HK_LAYOUT: str_cpy(b, HL_NAME[c->layout % 2u], 16); break;
+    case HK_BASS: str_cpy(b, HB_NAME[c->bass % 3u], 16); break;
+    case HK_VOICES: str_cpy(b, HV_NAME[c->voices % 4u], 16); break;
+    case HK_VLEAD: str_cpy(b, c->vlead ? "ON" : "OFF", 16); break;
+    case HK_JOY: str_cpy(b, HM_NAME[c->mode % HM_COUNT], 16); break;
+    case HK_FILT: str_cpy(b, c->filt ? "ON" : "OFF", 16); break;
+    case HK_CUT: {
+        const char *u;
+        param_format(&(param_desc_t){"CUT", F_CUTOFF, 0, 127, 127, 0, 0}, c->cutoff, b, &u);
+        str_cpy(b + str_len(b), u, 16 - str_len(b));
+        *frac = hui_frac(c->cutoff, 0, 127);
+        break;
+    }
+    case HK_RES: fmt_int(b, c->res); *frac = hui_frac(c->res, 0, 127); break;
+    case HK_HP: str_cpy(b, c->hp ? "ON" : "OFF", 16); break;
+    case HK_ENV: str_cpy(b, HE_NAME[c->env % HE_COUNT], 16); break;
+    case HK_ATK: hui_time(b, P_ATK); *frac = hui_frac(TSEL->p[P_ATK], TP[P_ATK].min, TP[P_ATK].max); break;
+    case HK_REL: hui_time(b, P_REL); *frac = hui_frac(TSEL->p[P_REL], TP[P_REL].min, TP[P_REL].max); break;
+    case HK_GLIDE: str_cpy(b, HGL_NAME[c->glide % HGL_COUNT], 16); break;
+    case HK_REV: str_cpy(b, HRV_NAME[c->rev % HRV_COUNT], 16); break;
+    case HK_DLY: str_cpy(b, HDL_NAME[c->dly % HDL_COUNT], 16); break;
+    case HK_CHO: str_cpy(b, HCH_NAME[c->cho % HCH_COUNT], 16); break;
+    case HK_FLG: str_cpy(b, HFL_NAME[c->flg % HFL_COUNT], 16); break;
+    case HK_TREM: str_cpy(b, HTR_NAME[c->trem % HTR_COUNT], 16); break;
+    case HK_REV_AMT: case HK_DLY_AMT: case HK_CHO_AMT: case HK_FLG_AMT: case HK_TREM_AMT:
+        if (!*hui_fx_on((hc_trk_t *)c, k - 1u)) {        /* (the type's card is just before its AMOUNT) */
+            str_cpy(b, "-", 16);
+        } else {
+            fmt_int(b, (int32_t)hui_fx_amount(c, k - 1u));
+            *frac = hui_frac((int32_t)hui_fx_amount(c, k - 1u), 0, 127);
+        }
+        break;
+    case HK_LFO: str_cpy(b, HLF_NAME[c->lfo % HLF_COUNT], 16); break;
+    case HK_STEREO: str_cpy(b, c->stereo ? "ON" : "OFF", 16); break;
+    case HK_DRIVE: str_cpy(b, HDR_NAME[c->drive % HDR_COUNT], 16); break;
+    case HK_TAPE: str_cpy(b, HTP_NAME[c->tape % HTP_COUNT], 16); break;
+    case HK_STRUM: str_cpy(b, HST_NAME[c->strum % 3u], 16); break;
+    case HK_APAT: str_cpy(b, HA_NAME[c->arp_pat % HA_COUNT], 16); break;
+    case HK_ARATE: str_cpy(b, HR_NAME[c->arp_rate % HR_COUNT], 16); break;
+    case HK_ALAYER: str_cpy(b, HAL_NAME[c->arp_layer % 3u], 16); break;
+    case HK_SEQLEN: fmt_int(b, hcs.len); *frac = hui_frac(hcs.len, 4, 16); break;
+    case HK_KIT: str_cpy(b, N_DRUM_KIT[c->kit % 4u], 16); break;
+    case HK_DLSTYLE: str_cpy(b, DL_NAME[c->dl_style % DL_STYLES], 16); break;
+    case HK_DLVAR: str_cpy(b, DV_NAME[c->dl_var % DV_VARS], 16); break;
+    case HK_SONG: str_cpy(b, HCG_SONG[hcg.song % HG_SONGS].name, 16); break;
+    case HK_DIFF: str_cpy(b, HGD_NAME[hcg.diff % HGD_COUNT], 16); break;
+    case HK_SPEED: fmt_int(b, hcg.speed); str_cpy(b + str_len(b), "%", 16 - str_len(b)); *frac = hui_frac(hcg.speed, 50, 100); break;
+    case HK_LEVEL: fmt_int(b, hcg.level + 1); *frac = hui_frac(hcg.level, 0, HGE_LEVELS - 1); break;
+    case HK_L1: case HK_L2: case HK_L3: case HK_L4:
+        fmt_int(b, trk[k - HK_L1].p[P_LEVEL]);
+        *frac = hui_frac(trk[k - HK_L1].p[P_LEVEL], 0, 127);
+        break;
+    case HK_BPM: fmt_int(b, song.g[G_BPM]); *frac = hui_frac(song.g[G_BPM], GP[G_BPM].min, GP[G_BPM].max); break;
+    case HK_METRO: str_cpy(b, hcl.metro ? "ON" : "OFF", 16); break;
+    case HK_SPK: str_cpy(b, HC_SPK_NAME[settings.lowcut % 3u], 16); break;
+    case HK_OUT: str_cpy(b, HC_OUT_NAME[hui.out_line & 1u], 16); break;
+    case HK_MIDIIN: str_cpy(b, hui.midi_in ? "ON" : "OFF", 16); break;
+    case HK_THEME: str_cpy(b, UI_PALETTES[settings.palette % NPALETTES].name, 16); break;
+    case HK_BARS: if (hcl.bars) fmt_int(b, hcl.bars); else str_cpy(b, "FREE", 16); break;
+    case HK_SLOT: str_cpy(b, "P1", 16); b[1] = (char)('1' + hui.slot % 4u); break;
+    case HK_CLEAR: str_cpy(b, "ALL", 16); return 1;
+    case HK_LOAD: case HK_SAVE: str_cpy(b, "P1", 16); b[1] = (char)('1' + hui.slot % 4u); return 1;
+    default: break;
+    }
+    return 0;
+}
+/* a line under a card's value: what a layer's level is doing, what a preset holds */
+static void hui_card_sub(uint32_t k, char *b)
+{
+    b[0] = 0;
+    if (k >= HK_L1 && k <= HK_L4 && (trk[k - HK_L1].p[P_MUTE] || hcl.l[k - HK_L1].state != HLS_OFF))
+        str_cpy(b, trk[k - HK_L1].p[P_MUTE] ? "MUTE" : HLS_NAME[hcl.l[k - HK_L1].state & 3u], 16);
+    else if (k == HK_SLOT && !hui.preset_used[hui.slot % 4u])
+        str_cpy(b, "EMPTY", 16);
+    else if (k == HK_SLOT && !(project_name(hui.slot % 4u, b) && b[0]))
+        str_cpy(b, "SAVED", 16);
+}
+
+/* a card turned s detents: its value (a list steps round, a number stops at its ends, a switch goes on to the
+ * right and off to the left); an action card is armed to the right, let be to the left */
+static void hui_card_turn(uint32_t k, int32_t s)
 {
     hc_trk_t *c = hui_c();
-    switch (screen) {
-    case HU_KEY:
-        switch (row) {
-        case RK_KEY: hui_key_set(TSEL->p[P_ROOT] + d); break;
-        case RK_OCT: song.octave = (int8_t)clamp(song.octave + d, -2, 2); break;
-        case RK_SCALE: hui_scale_set(hui_cycle(hui_scale_get(), d, 10)); break;
-        case RK_LAYOUT: c->layout = (uint8_t)hui_cycle(c->layout, d, 2); break;
-        case RK_JOY: c->mode = (uint8_t)hui_cycle(c->mode, d, HM_COUNT); break;
-        case RK_BASS: c->bass = (uint8_t)hui_cycle(c->bass, d, 3); break;
-        case RK_VOICES: c->voices = (uint8_t)hui_cycle(c->voices, d, 4); break;
-        case RK_VLEAD: c->vlead = (uint8_t)!c->vlead; break;
-        default: hui_random_all(); break;
-        }
-        hc.dirty = 1;
-        break;
-    case HU_SOUND:
-        switch (row) {
-        case RS_SOUND: hc_sound_load(TSEL, hui_cycle(c->sound, d, HC_NSOUNDS)); return;
-        case RS_ENV: c->env = (uint8_t)hui_cycle(c->env, d, HE_COUNT); c->atk = c->rel = 0; break;
-        case RS_ATK: c->atk = (uint8_t)clamp((c->atk ? c->atk : TSEL->p[P_ATK]) + d * 4, 1, 127); break;
-        case RS_REL: c->rel = (uint8_t)clamp((c->rel ? c->rel : TSEL->p[P_REL]) + d * 4, 1, 127); break;
-        case RS_FILT: c->filt = (uint8_t)!c->filt; break;
-        case RS_CUT: c->cutoff = (uint8_t)clamp(c->cutoff + d * 4, 0, 127); c->filt = 1; break;
-        case RS_RES: c->res = (uint8_t)clamp(c->res + d * 4, 0, 127); c->filt = 1; break;
-        case RS_HP: c->hp = (uint8_t)!c->hp; break;
-        case RS_REV: c->rev = (uint8_t)hui_cycle(c->rev, d, HRV_COUNT); break;
-        case RS_DLY: c->dly = (uint8_t)hui_cycle(c->dly, d, HDL_COUNT); break;
-        case RS_CHO: c->cho = (uint8_t)hui_cycle(c->cho, d, HCH_COUNT); break;
-        case RS_FLG: c->flg = (uint8_t)hui_cycle(c->flg, d, HFL_COUNT); break;
-        case RS_TREM: c->trem = (uint8_t)hui_cycle(c->trem, d, HTR_COUNT); break;
-        case RS_LFO: c->lfo = (uint8_t)hui_cycle(c->lfo, d, HLF_COUNT); break;
-        case RS_GLIDE: c->glide = (uint8_t)hui_cycle(c->glide, d, HGL_COUNT); break;
-        case RS_DRIVE: c->drive = (uint8_t)hui_cycle(c->drive, d, HDR_COUNT); break;
-        case RS_TAPE: c->tape = (uint8_t)hui_cycle(c->tape, d, HTP_COUNT); break;
-        case RS_STEREO: c->stereo = (uint8_t)!c->stereo; break;
-        case RS_SPK: settings.lowcut = hui_cycle(settings.lowcut, d, 3); fx_lowcut = (uint8_t)settings.lowcut; break;
-        case RS_OUT: hui.out_line = (uint8_t)!hui.out_line; hcfx.line = hui.out_line; break;
-        case RS_MIDIIN: hui.midi_in = (uint8_t)!hui.midi_in; break;
-        case RS_THEME:                                   /* the palette: the whole screen again; saved with the
-                                                          * settings a moment later, as the sound is */
-            settings.palette = hui_cycle(settings.palette, d, NPALETTES);
-            palette_set(settings.palette);
-            hui.force = 1;
-            hui_live.dirty = 1;
-            hui_live.at_ms = fm1_ms;
-            return;
-        default: hui_random_sound(); return;
-        }
-        break;
-    case HU_MODE:
-        switch (row) {
-        case RM_MODE: hui_mode_set(TSEL, HU_STYLE[hui_cycle(hui_style_index(c->play), d, HU_NSTYLES)]); return;
-        case RM_BPM: song.g[G_BPM] = (int16_t)clamp(song.g[G_BPM] + d, GP[G_BPM].min, GP[G_BPM].max); break;
-        case RM_STRUM: c->strum = (uint8_t)hui_cycle(c->strum, d, 3); break;
-        case RM_APAT: c->arp_pat = (uint8_t)hui_cycle(c->arp_pat, d, HA_COUNT); break;
-        case RM_ARATE: c->arp_rate = (uint8_t)hui_cycle(c->arp_rate, d, HR_COUNT); break;
-        case RM_ALAYER: c->arp_layer = (uint8_t)hui_cycle(c->arp_layer, d, 3); break;
-        case RM_SEQLEN: hcs.len = (uint8_t)clamp((int32_t)hcs.len + d * 4, 4, 16); if (hcs.cur >= hcs.len) hcs.cur = 0; return;
-        case RM_KIT: c->kit = (uint8_t)hui_cycle(c->kit, d, 4); break;
-        case RM_DLSTYLE: c->dl_style = (uint8_t)hui_cycle(c->dl_style, d, DL_STYLES); return;
-        case RM_DLVAR: c->dl_var = (uint8_t)hui_cycle(c->dl_var, d, DV_VARS); return;
-        case RM_SONG: hcg.song = (uint8_t)hui_cycle(hcg.song, d, HG_SONGS); return;
-        case RM_DIFF: hcg.diff = (uint8_t)hui_cycle(hcg.diff, d, HGD_COUNT); return;
-        case RM_SPEED: hcg.speed = (uint8_t)clamp(hcg.speed + d * 10, 50, 100); return;
-        case RM_LEVEL: hcg.level = (uint8_t)hui_cycle(hcg.level, d, HGE_LEVELS); return;
-        default: hui_random_pattern(); return;
-        }
-        break;
-    case HU_LOOP:
-        if (row < HCL_LAYERS) {
-            hcl.sel = (uint8_t)row;
-            if (d > 0)
-                hcl_rec_press();                         /* OFF -> ARMED -> REC -> PLAY -> OFF */
-            else
-                hcl_clear(row);
-        } else if (row == RL_BARS) {
-            hcl.bars = (uint8_t)clamp(hcl.bars + d, 0, 8);
-        } else if (row == RL_METRO) {
-            hcl.metro = (uint8_t)!hcl.metro;
-        } else {
-            hcl_clear_all();
-            hui_say("ALL CLEARED");
-        }
-        return;
-    default:                                             /* PRESETS: OCT+ loads */
-        if (d > 0)
-            hui_preset_load(row);
+    if (hui_card_action(k)) {
+        hui.armed = (uint8_t)(s > 0 ? k : 0u);
         return;
     }
+    switch (k) {
+    case HK_KEY: hui_key_set(TSEL->p[P_ROOT] + s); hc.dirty = 1; break;
+    case HK_SCALE: hui_scale_set(hui_cycle(hui_scale_get(), s, 10)); hc.dirty = 1; break;
+    case HK_OCT: song.octave = (int8_t)clamp(song.octave + s, -2, 2); break;
+    case HK_LAYOUT: c->layout = (uint8_t)hui_cycle(c->layout, s, 2); hc.dirty = 1; break;
+    case HK_BASS: c->bass = (uint8_t)hui_cycle(c->bass, s, 3); hc.dirty = 1; break;
+    case HK_VOICES: c->voices = (uint8_t)hui_cycle(c->voices, s, 4); hc.dirty = 1; break;
+    case HK_VLEAD: c->vlead = (uint8_t)(s > 0); hc.dirty = 1; break;
+    case HK_JOY: c->mode = (uint8_t)hui_cycle(c->mode, s, HM_COUNT); hc.dirty = 1; break;
+    case HK_FILT: c->filt = (uint8_t)(s > 0); break;
+    case HK_CUT: c->cutoff = (uint8_t)clamp(c->cutoff + s * 3, 0, 127); c->filt = 1; break;
+    case HK_RES: c->res = (uint8_t)clamp(c->res + s * 3, 0, 127); c->filt = 1; break;
+    case HK_HP: c->hp = (uint8_t)(s > 0); break;
+    case HK_ENV: c->env = (uint8_t)hui_cycle(c->env, s, HE_COUNT); c->atk = c->rel = 0; break;
+    case HK_ATK: c->atk = (uint8_t)clamp((c->atk ? c->atk : TSEL->p[P_ATK]) + s * 2, 1, 127); break;
+    case HK_REL: c->rel = (uint8_t)clamp((c->rel ? c->rel : TSEL->p[P_REL]) + s * 2, 1, 127); break;
+    case HK_GLIDE: c->glide = (uint8_t)hui_cycle(c->glide, s, HGL_COUNT); break;
+    case HK_REV: c->rev = (uint8_t)hui_cycle(c->rev, s, HRV_COUNT); break;
+    case HK_DLY: c->dly = (uint8_t)hui_cycle(c->dly, s, HDL_COUNT); break;
+    case HK_CHO: c->cho = (uint8_t)hui_cycle(c->cho, s, HCH_COUNT); break;
+    case HK_FLG: c->flg = (uint8_t)hui_cycle(c->flg, s, HFL_COUNT); break;
+    case HK_TREM: c->trem = (uint8_t)hui_cycle(c->trem, s, HTR_COUNT); break;
+    case HK_REV_AMT: case HK_DLY_AMT: case HK_CHO_AMT: case HK_FLG_AMT: case HK_TREM_AMT: hui_fx_turn(c, k - 1u, s); break;
+    case HK_LFO: c->lfo = (uint8_t)hui_cycle(c->lfo, s, HLF_COUNT); break;
+    case HK_STEREO: c->stereo = (uint8_t)(s > 0); break;
+    case HK_DRIVE: c->drive = (uint8_t)hui_cycle(c->drive, s, HDR_COUNT); break;
+    case HK_TAPE: c->tape = (uint8_t)hui_cycle(c->tape, s, HTP_COUNT); break;
+    case HK_STRUM: c->strum = (uint8_t)hui_cycle(c->strum, s, 3); break;
+    case HK_APAT: c->arp_pat = (uint8_t)hui_cycle(c->arp_pat, s, HA_COUNT); break;
+    case HK_ARATE: c->arp_rate = (uint8_t)hui_cycle(c->arp_rate, s, HR_COUNT); break;
+    case HK_ALAYER: c->arp_layer = (uint8_t)hui_cycle(c->arp_layer, s, 3); break;
+    case HK_SEQLEN: hcs.len = (uint8_t)clamp((int32_t)hcs.len + s * 4, 4, 16); if (hcs.cur >= hcs.len) hcs.cur = 0; return;
+    case HK_KIT: c->kit = (uint8_t)hui_cycle(c->kit, s, 4); break;
+    case HK_DLSTYLE: c->dl_style = (uint8_t)hui_cycle(c->dl_style, s, DL_STYLES); return;
+    case HK_DLVAR: c->dl_var = (uint8_t)hui_cycle(c->dl_var, s, DV_VARS); return;
+    case HK_SONG: hcg.song = (uint8_t)hui_cycle(hcg.song, s, HG_SONGS); return;
+    case HK_DIFF: hcg.diff = (uint8_t)hui_cycle(hcg.diff, s, HGD_COUNT); return;
+    case HK_SPEED: hcg.speed = (uint8_t)clamp(hcg.speed + s * 10, 50, 100); return;
+    case HK_LEVEL: hcg.level = (uint8_t)clamp(hcg.level + s, 0, HGE_LEVELS - 1); return;
+    case HK_L1: case HK_L2: case HK_L3: case HK_L4:
+        trk[k - HK_L1].p[P_LEVEL] = (int16_t)clamp(trk[k - HK_L1].p[P_LEVEL] + s * 4, 0, 127);
+        return;
+    case HK_BPM: song.g[G_BPM] = (int16_t)clamp(song.g[G_BPM] + s, GP[G_BPM].min, GP[G_BPM].max); break;
+    case HK_METRO: hcl.metro = (uint8_t)(s > 0); return;
+    case HK_SPK: settings.lowcut = hui_cycle(settings.lowcut, s, 3); fx_lowcut = (uint8_t)settings.lowcut; return;
+    case HK_OUT: hui.out_line = (uint8_t)(s > 0); hcfx.line = hui.out_line; return;
+    case HK_MIDIIN: hui.midi_in = (uint8_t)(s > 0); return;
+    case HK_THEME:                                       /* the palette: the whole screen again; saved with the
+                                                          * settings a moment later, as the sound is */
+        settings.palette = hui_cycle(settings.palette, s, NPALETTES);
+        palette_set(settings.palette);
+        hui.force = 1;
+        hui_live.dirty = 1;
+        hui_live.at_ms = fm1_ms;
+        return;
+    case HK_BARS: hcl.bars = (uint8_t)clamp(hcl.bars + s, 0, 8); return;
+    case HK_SLOT: hui.slot = (uint8_t)clamp((int32_t)hui.slot + s, 0, 3); return;
+    default: return;
+    }
     hui_apply();
+}
+/* OCT+ on the armed card: done */
+static void hui_card_do(uint32_t k)
+{
+    hui.armed = 0;
+    if (k == HK_CLEAR) {
+        hcl_clear_all();
+        hui_say("ALL CLEARED");
+    } else if (k == HK_LOAD) {
+        hui_preset_load(hui.slot);
+    } else if (k == HK_SAVE) {
+        hui_preset_save(hui.slot);
+    }
 }
 
 /* the mode of the live track: a drum mode takes the DRUM engine (the sound kept for the way back); the chord
@@ -707,58 +738,75 @@ static void hui_rec_tap(void)
 }
 
 /* --------------------------------------------------------------- input --- */
-/* The lists (HU_PICK): ENVELOPE and LFO as pages (the ENV / LFO buttons), the SOUND and MODE lists shown
- * while the PRESETS / ALGORITHM knob turns. SELECT moves the choice, applied as it moves */
-enum { PK_ENV, PK_LFO, PK_SOUND, PK_LAYER };
-static uint32_t hui_pick_count(uint32_t k)
-{
-    return k == PK_ENV ? HE_COUNT : k == PK_LFO ? HLF_COUNT : k == PK_SOUND ? (uint32_t)HC_NSOUNDS : NTRK;
-}
+/* The lists (HU_PICK): the sounds and the layers, shown over the screen while the PRESETS / ALGORITHM knob turns
+ * and gone 1.5 s after (or at a press) */
+enum { PK_SOUND, PK_LAYER };
+static uint32_t hui_pick_count(uint32_t k) { return k == PK_SOUND ? (uint32_t)HC_NSOUNDS : NTRK; }
 static const char *hui_pick_name(uint32_t k, uint32_t i)
 {
-    return k == PK_ENV ? HE_NAME[i % HE_COUNT] : k == PK_LFO ? HLF_NAME[i % HLF_COUNT] :
-           k == PK_SOUND ? HC_SOUNDS[i % HC_NSOUNDS].name : HC_SOUNDS[hc.t[i % NTRK].sound % HC_NSOUNDS].name;
+    return k == PK_SOUND ? HC_SOUNDS[i % HC_NSOUNDS].name : HC_SOUNDS[hc.t[i % NTRK].sound % HC_NSOUNDS].name;
 }
-static uint32_t hui_pick_cur(uint32_t k)
+static uint32_t hui_pick_cur(uint32_t k) { return k == PK_SOUND ? hui_c()->sound : song.sel; }
+static void hui_pick_move(int32_t s)                    /* (SELECT while a list shows: its choice) */
 {
-    const hc_trk_t *c = hui_c();
-    return k == PK_ENV ? c->env : k == PK_LFO ? c->lfo : k == PK_SOUND ? c->sound : song.sel;
+    uint32_t k = hui.pick_kind, i = (uint32_t)clamp((int32_t)hui_pick_cur(k) + s, 0, (int32_t)hui_pick_count(k) - 1);
+    if (k == PK_SOUND)
+        hc_sound_load(TSEL, i);
+    else
+        track_select(i);
+    hui.pick_ms = fm1_ms;
 }
-static void hui_pick_apply(uint32_t k, uint32_t i)
-{
-    hc_trk_t *c = hui_c();
-    switch (k) {
-    case PK_ENV: c->env = (uint8_t)(i % HE_COUNT); c->atk = c->rel = 0; hui_apply(); break;
-    case PK_LFO: c->lfo = (uint8_t)(i % HLF_COUNT); hui_apply(); break;
-    case PK_SOUND: hc_sound_load(TSEL, i % HC_NSOUNDS); break;
-    default: track_select(i % NTRK); break;
-    }
-}
-static void hui_pick_open(uint32_t k, int sticky)
+static void hui_pick_open(uint32_t k)
 {
     hui.pick_kind = (uint8_t)k;
-    hui.pick_sticky = (uint8_t)sticky;
     hui.pick_ms = fm1_ms;
     if (hui.screen != HU_PICK) {
+        hui.pick_back = hui.screen;
         hui.screen = HU_PICK;
         hui.force = 1;
     }
 }
-static void hui_pick_move(int32_t s)
+static void hui_pick_close(void)
 {
-    uint32_t k = hui.pick_kind, n = hui_pick_count(k);
-    hui_pick_apply(k, (uint32_t)clamp((int32_t)hui_pick_cur(k) + s, 0, (int32_t)n - 1));
-    hui.pick_ms = fm1_ms;
+    hui.screen = hui.pick_back < HU_N && hui.pick_back != HU_PICK ? hui.pick_back : (uint8_t)HU_HOME;
+    hui.force = 1;
 }
 
-static void hui_open(uint32_t screen)
+/* a menu's button tapped: in, on the page it was left on (PRESETS with SAVE armed: SAVE, OCT+ saves); already in,
+ * on: the next page, round; PRESETS the next slot, the one-page LOOPER back HOME */
+static void hui_open(uint32_t sc)
 {
-    if (hui.screen == screen)
-        screen = HU_HOME;
-    hui.screen = (uint8_t)screen;
     hui.force = 1;
-    if (screen == HU_PRESET)
-        hui_preset_scan();
+    if (hui.screen != sc) {
+        hui.screen = (uint8_t)sc;
+        hui.armed = 0;
+        if (sc == HU_PRESET) {
+            hui_preset_scan();
+            hui.armed = HK_SAVE;
+        }
+        return;
+    }
+    if (sc == HU_PRESET) {
+        hui.slot = (uint8_t)((hui.slot + 1u) % 4u);
+        hui.armed = HK_SAVE;
+    } else if (HU_SEC[sc].n > 1u) {
+        hui.page[sc] = (uint8_t)((hui.page[sc] + 1u) % HU_SEC[sc].n);
+        hui.armed = 0;
+    } else {
+        hui.screen = HU_HOME;
+    }
+}
+/* SOUND on one of its pages (the ENV and LFO buttons); pressed again there: HOME */
+static void hui_open_page(uint32_t sc, uint32_t page)
+{
+    hui.force = 1;
+    hui.armed = 0;
+    if (hui.screen == sc && hui.page[sc] == page) {
+        hui.screen = HU_HOME;
+        return;
+    }
+    hui.screen = (uint8_t)sc;
+    hui.page[sc] = (uint8_t)page;
 }
 
 static void hui_tap_tempo(void)
@@ -942,21 +990,23 @@ static void hl_knob(uint32_t l, uint32_t i, int32_t s)
     hui_apply();
 }
 
-/* the button tapped: what it did before layers (its menu; EDIT: tap tempo too; SAVE on PRESETS: saves) */
+/* EDIT tapped: the next play style, ARP the one before, on HOME (whose knobs are the style's) */
+static void hui_style_step(int32_t d)
+{
+    hui_mode_set(TSEL, HU_STYLE[hui_cycle(hui_style_index(hui_c()->play), d, HU_NSTYLES)]);
+    hui_say(HP_NAME[hui_c()->play % HP_COUNT]);
+    hui.screen = HU_HOME;
+    hui.armed = 0;
+    hui.force = 1;
+}
+/* the button tapped: its menu (in, or on to the next page: hui_open); EDIT the next style */
 static void hl_tap(uint32_t l)
 {
-    switch (l) {
-    case HL_KEY: hui_open(HU_KEY); break;
-    case HL_SOUND: hui_open(HU_SOUND); break;
-    case HL_MODE: hui_open(HU_MODE); hui_tap_tempo(); break;
-    case HL_MIX: hui_open(HU_MIX); break;
-    default:
-        if (hui.screen == HU_PRESET)
-            hui_preset_save(hui.sel[HU_PRESET]);
-        else
-            hui_open(HU_PRESET);
-        break;
-    }
+    static const uint8_t SCREEN[HL_N] = {HU_HOME, HU_KEY, HU_SOUND, HU_HOME, HU_MIX, HU_PRESET};
+    if (l == HL_MODE)
+        hui_style_step(1);
+    else
+        hui_open(SCREEN[l % HL_N]);
 }
 
 /* each pass: which held button takes the keys (seq.c keyboard_block); one pressed now arms; its keys and knobs;
@@ -1017,16 +1067,12 @@ static void hui_input(void)
     uint32_t home = btn_hold(&hui.home_t0, B_HOME, now, 1);
     hc_trk_t *c = hui_c();
     int32_t s;
-    uint32_t sc = hui.screen, nrows = HU_ROWS[sc], held;
+    uint32_t sc = hui.screen, held;
     fm1_input_note_edges();                              /* (the keys are the ISR's: nothing of the UI's) */
     fm6_poll();
     hui_live_poll();
-    if (sc == HU_PICK && !hui.pick_sticky && (pressed || (uint32_t)(fm1_ms - hui.pick_ms) > 1500u)) {
-        hui.screen = HU_HOME;                            /* a knob's list: over (a button acts as on HOME) */
-        hui.force = 1;
-        sc = HU_HOME;
-        nrows = HU_ROWS[sc];
-    }
+    if (sc == HU_PICK && (pressed || (uint32_t)(fm1_ms - hui.pick_ms) > 1500u))
+        hui_pick_close();                                /* a knob's list: over (a button acts on the screen under it) */
     song.grid = 0;
     song.seq_mode = 0;
     hui_track_init(TSEL);
@@ -1037,55 +1083,46 @@ static void hui_input(void)
     }
     if (home == BT_TAP) {
         hui.screen = HU_HOME;
+        hui.armed = 0;
         hui.force = 1;
     }
     held = hui_layer_input(pressed);                     /* SCL FX EDIT GLO SAVE: held a layer, tapped a menu */
+    if (DOWN(B_ENV))                                     /* SOUND's AMP page (again: HOME) */
+        hui_open_page(HU_SOUND, HU_PG_AMP);
+    if (DOWN(B_LFO))                                     /* SOUND's WOBBLE page, the vibrato */
+        hui_open_page(HU_SOUND, HU_PG_WOBBLE);
+    if (DOWN(B_ARP))                                     /* the play style before (EDIT: the next) */
+        hui_style_step(-1);
+    if (DOWN(B_SEQ))
+        hui_open(HU_LOOP);
     sc = hui.screen;
-    nrows = HU_ROWS[sc];
-    if (DOWN(B_ENV)) {                                   /* the ENVELOPE page (again: back) */
-        if (hui.screen == HU_PICK && hui.pick_sticky && hui.pick_kind == PK_ENV) {
-            hui.screen = HU_HOME;
-            hui.force = 1;
-        } else {
-            hui_pick_open(PK_ENV, 1);
-        }
-    }
-    if (DOWN(B_LFO)) {                                   /* the LFO page */
-        if (hui.screen == HU_PICK && hui.pick_sticky && hui.pick_kind == PK_LFO) {
-            hui.screen = HU_HOME;
-            hui.force = 1;
-        } else {
-            hui_pick_open(PK_LFO, 1);
-        }
-    }
-    if (DOWN(B_ARP)) {
-        hui_mode_set(TSEL, c->play == HP_ARP ? HP_PLAY : HP_ARP);
-        hui_say(HP_NAME[c->play]);
-    }
-    {   /* OCT- / OCT+: a menu's value, HOME's octave; both together: RANDOMIZE */
+    {   /* OCT- / OCT+: the octave, or the armed action (OCT+ does it, OCT- lets it be); both together: RANDOMIZE */
         uint32_t both = (1u << panel.btn[B_OCTDN]) | (1u << panel.btn[B_OCTUP]);
         static uint8_t chord_seen;
         if ((fm1_in.buttons & both) == both) {
             if (!chord_seen) {
                 chord_seen = 1;
+                hui.armed = 0;
                 if (sc == HU_SOUND) hui_random_sound();
-                else if (sc == HU_MODE) hui_random_pattern();
                 else hui_random_all();
             }
         } else if (!(fm1_in.buttons & both)) {
             chord_seen = 0;
         } else if (!chord_seen && (DOWN(B_OCTDN) || DOWN(B_OCTUP))) {
             int32_t d = DOWN(B_OCTUP) ? 1 : -1;
-            if (sc == HU_MIX || (sc == HU_HOME && c->play == HP_MIXER)) {
+            if (sc == HU_HOME && c->play == HP_MIXER) {
                 TSEL->p[P_LEVEL] = (int16_t)clamp(TSEL->p[P_LEVEL] + d * 8, 0, 127);
-            } else if (sc == HU_HOME) {
-                song.octave = (int8_t)clamp(song.octave + d, -2, 2);
+            } else if (hui.armed && hui_paged(sc)) {
+                if (d > 0)
+                    hui_card_do(hui.armed);
+                hui.armed = 0;
             } else {
-                hui_row_change(sc, hui.sel[sc], d);
+                song.octave = (int8_t)clamp(song.octave + d, -2, 2);
             }
         }
     }
-    if ((s = panel_enc(EN_SELECT)) != 0) {               /* the cursor, or the key; MIXER: the layer; SEQUENCER: the step */
+    if ((s = panel_enc(EN_SELECT)) != 0) {               /* a menu's pages (PRESETS: the slot), or
+                                                          * the key; MIXER: the layer; SEQUENCER: the step */
         if (sc == HU_HOME && c->play == HP_MIXER) {
             track_select((uint32_t)clamp((int32_t)song.sel + s, 0, NTRK - 1));
         } else if (sc == HU_HOME && c->play == HP_SEQ) {
@@ -1095,53 +1132,42 @@ static void hui_input(void)
             hc.dirty = 1;
         } else if (sc == HU_PICK) {
             hui_pick_move(s);
-        } else if (nrows) {
-            hui.sel[sc] = (uint8_t)clamp((int32_t)hui.sel[sc] + s, 0, (int32_t)nrows - 1);
+        } else if (sc == HU_PRESET) {
+            hui_card_turn(HK_SLOT, s);
+        } else if (hui_paged(sc)) {
+            uint32_t p = (uint32_t)clamp((int32_t)hui.page[sc] + s, 0, (int32_t)HU_SEC[sc].n - 1);
+            if (p != hui.page[sc])
+                hui.armed = 0;
+            hui.page[sc] = (uint8_t)p;
         }
     }
     if ((s = panel_enc(EN_ALGO)) != 0) {                 /* the layer (1..4, its own sound and style), the four
                                                           * shown while the knob turns */
         track_select((uint32_t)clamp((int32_t)song.sel + s, 0, NTRK - 1));
         hui_track_init(TSEL);
-        hui_pick_open(PK_LAYER, 0);
+        hui_pick_open(PK_LAYER);
     }
     if ((s = panel_enc(EN_PRESET)) != 0) {               /* the sound, its list shown while the knob turns */
         hc_sound_load(TSEL, hui_cycle(c->sound, s, HC_NSOUNDS));
-        hui_pick_open(PK_SOUND, 0);
+        hui_pick_open(PK_SOUND);
     }
-    if (!held && (s = panel_enc(EN_K1)) != 0) {         /* KNOB 1: the FILTER wheel (a held layer: its own) */
-        c->cutoff = (uint8_t)clamp(c->cutoff + s * 3, 0, 127);
-        c->filt = 1;
-        hui_apply();
-        hui_say_value("FILTER", RS_CUT);
+    if (!held && hui_paged(sc == HU_PICK ? hui.pick_back : sc)) {   /* KNOB 1..4 on a menu: its four cards */
+        const hu_page_t *pg = hui_page_of(sc == HU_PICK ? hui.pick_back : sc, hui.page[sc == HU_PICK ? hui.pick_back : sc]);
+        for (i = 0; i < 4u; i++)
+            if ((s = panel_enc(EN_K1 + i)) != 0 && pg->card[i])
+                hui_card_turn(pg->card[i], s);
     }
-    if (!held && (s = panel_enc(EN_K2)) != 0) {                   /* KNOB 2: RESONANCE */
-        c->res = (uint8_t)clamp(c->res + s * 3, 0, 127);
-        c->filt = 1;
-        hui_apply();
-        hui_say_value("RESONANCE", RS_RES);
-    }
-    if (!held && (s = panel_enc(EN_K3)) != 0) {                   /* KNOB 3: ATTACK */
-        c->atk = (uint8_t)clamp((c->atk ? c->atk : TSEL->p[P_ATK]) + s * 2, 1, 127);
-        hui_apply();
-        hui_say_value("ATTACK", RS_ATK);
-    }
-    if (!held && (s = panel_enc(EN_K4)) != 0) {                   /* KNOB 4: RELEASE (an effect row of the SOUND menu: its amount) */
-        if (sc == HU_SOUND && hui_fx_row(hui.sel[sc])) {
-            hui_fx_turn(c, hui.sel[sc], s);
-            hui_apply();
-        } else {
-            c->rel = (uint8_t)clamp((c->rel ? c->rel : TSEL->p[P_REL]) + s * 2, 1, 127);
-            hui_apply();
-            hui_say_value("RELEASE", RS_REL);
+    if (!held && (sc == HU_HOME || (sc == HU_PICK && hui.pick_back == HU_HOME)))   /* HOME: KNOB 1..4 the style's */
+        for (i = 0; i < 4u; i++) {
+            uint32_t k = HU_HOME_KNOBS[c->play % HP_COUNT][i];
+            if ((s = panel_enc(EN_K1 + i)) != 0 && k) {
+                hui_card_turn(k, s);
+                hui_say_value(HK_NAME[k], k);
+            }
         }
-    }
     {   /* the looper: REC cycles the layer (held: clears it), PLAY pauses / resumes, SEQ shows the LOOPER screen */
         uint32_t rec = btn_hold(&hui.rec_t0, B_REC, now, 1);
-        if (sc != HU_LOOP)
-            hcl.sel = (uint8_t)song.sel;
-        else
-            hcl.sel = (uint8_t)(hui.sel[HU_LOOP] < HCL_LAYERS ? hui.sel[HU_LOOP] : song.sel);
+        hcl.sel = (uint8_t)song.sel;
         if (rec == BT_TAP) {
             hui_rec_tap();
         } else if (rec == BT_HOLD) {                     /* held 0.7 s: the selected layer (the last one: all) */
@@ -1178,8 +1204,6 @@ static void hui_input(void)
                 hui_say(hcl.playing ? "PLAYING" : hcl.len ? "PAUSED" : "NO LOOP");
             }
         }
-        if (DOWN(B_SEQ))
-            hui_open(HU_LOOP);
         if (hcl.advance)
             hui_looper_advance();
     }
@@ -1193,19 +1217,18 @@ static void hui_leds(void)
 {
     uint8_t nl[FM1_NCOL] = {0}, nd[FM1_NCOL] = {0};
     uint32_t k, c, held = fm1_in.notes | hc.latched;
-    static const uint8_t MENU_BTN[HU_N] = {B_HOME, B_SCL, B_FX, B_EDIT, B_SAVE, B_HOME, B_HOME, B_GLO};
+    static const uint8_t MENU_BTN[HU_N] = {B_HOME, B_SCL, B_FX, B_EDIT, B_SAVE, B_SEQ, B_HOME, B_GLO};
     static uint8_t ready;
+    uint32_t sc = hui.screen == HU_PICK ? hui.pick_back % HU_N : hui.screen;
     if (!ready) {
         led_pos_init();
         ready = 1;
     }
-    led_put(nl, panel.btn[MENU_BTN[hui.screen]], 1);
+    led_put(nl, panel.btn[MENU_BTN[sc]], 1);
     if (hui.ly)
         led_put(nl, panel.btn[HL_BTN[hui.ly % HL_N]], 1);
-    if (hui.screen == HU_PICK && hui.pick_sticky)
-        led_put(nl, panel.btn[hui.pick_kind == PK_ENV ? B_ENV : B_LFO], 1);
-    if (hui_c()->play == HP_ARP)
-        led_put(nl, panel.btn[B_ARP], 1);
+    if (sc == HU_SOUND && (hui.page[HU_SOUND] == HU_PG_AMP || hui.page[HU_SOUND] == HU_PG_WOBBLE))
+        led_put(nl, panel.btn[hui.page[HU_SOUND] == HU_PG_AMP ? B_ENV : B_LFO], 1);
     led_put(nl, panel.btn[B_REC], hcl_count(HLS_REC) != 0u || (hcl_count(HLS_ARMED) != 0u && ((fm1_ms / 250u) & 1u) == 0u));
     led_put(nl, panel.btn[B_PLAY], hcl.playing);
     led_put(nl, panel.btn[B_OCTDN], song.octave < 0);
@@ -1226,7 +1249,6 @@ static void hui_leds(void)
 #define HU_HEAD 24
 #define HU_ROW 23
 #define HU_ROWS_Y 28
-#define HU_NROWS_SHOWN 8
 #define HU_FOOT_Y 214
 
 static uint32_t hui_fx_mask(const hc_trk_t *c)
@@ -1316,12 +1338,52 @@ static const char *hint_word(const hint_t *h, uint32_t pass, uint32_t i)
     return pass ? h->alt : h->act;
 }
 
-/* the footer: the four menu buttons, coloured (HOME); a menu's hints */
+/* HOME's foot: the four knobs as they are now, KNOB 1..4 left to right under the knobs' order: the name in the
+ * colour of what it sets (yellow the sound, red the style, the mix's for the tempo), the value under it */
+#define HU_KNOBS_Y 200
+static uint16_t hui_card_col(uint32_t k)
+{
+    return k >= HK_FILT && k <= HK_TAPE ? HC_YELLOW : k >= HK_STRUM && k <= HK_LEVEL ? HC_RED : k <= HK_JOY ? HC_GREY : HU_COL(HU_MIX);
+}
+static void hui_draw_knobs(void)
+{
+    const uint8_t *kn = HU_HOME_KNOBS[hui_c()->play % HP_COUNT];
+    uint32_t i, sig = 0x4B4E0Bu + ux.gen * 7919u + song.sel * 31u;
+    char v[20];
+    int32_t f;
+    for (i = 0; i < 4u; i++)
+        if (kn[i]) {
+            hui_card(kn[i], v, &f);
+            sig = str_hash(sig + kn[i] * 13u + i, v);
+        }
+    if (!hui.force && sig == hui.sig[3])
+        return;
+    hui.sig[3] = sig;
+    cv_begin(240, 240 - HU_KNOBS_Y, T_BG);
+    cv_rect(4, 0, 232, 1, T_LINE);
+    for (i = 0; i < 4u; i++) {
+        int32_t x = 4 + (int32_t)i * 59;
+        if (!kn[i])
+            continue;
+        hui_card(kn[i], v, &f);
+        cv_text_c(x + 28, 3, &AF_S, HK_NAME[kn[i]], hui_card_col(kn[i]), T_BG);
+        if (text_w(&AF_M, v) <= 54)
+            cv_text_c(x + 28, 19, &AF_M, v, T_TEXT, T_BG);
+        else
+            cv_text_fit(x + 1, 21, &AF_S, v, T_TEXT, T_BG, 54);
+    }
+    cv_blit(0, HU_KNOBS_Y);
+}
+
+/* the footer: a menu's hints (HOME: its knobs) */
 static void hui_draw_foot(void)
 {
-    uint32_t sig = hui.screen * 7u + 1u + (hui.screen == HU_SOUND && hui_fx_row(hui.sel[HU_SOUND]) ? 3u : 0u) +
-                   (hui.ly && hui.ly_open ? 65537u * hui.ly : 0u) +
-                   (hui.screen == HU_PICK ? hui.pick_kind * 11u + hui.pick_sticky * 13u : 0u) + ux.gen * 7919u;
+    uint32_t sig = hui.screen * 7u + 1u + hui.armed * 101u + (hui.ly && hui.ly_open ? 65537u * hui.ly : 0u) +
+                   (hui.screen == HU_PICK ? hui.pick_kind * 11u : 0u) + ux.gen * 7919u;
+    if (hui.screen == HU_HOME && !(hui.ly && hui.ly_open)) {
+        hui_draw_knobs();
+        return;
+    }
     if (!hui.force && sig == hui.sig[3])
         return;
     hui.sig[3] = sig;
@@ -1333,39 +1395,24 @@ static void hui_draw_foot(void)
             h[n++] = (hint_t){KC_KEYS, "KEYS", "KEYS", T_KEY, T_INK};
             h[n++] = (hint_t){KC_K14, "KNOBS", "KNOBS", T_KEY, T_INK};
             h[n++] = (hint_t){HL_KC[hui.ly % HL_N], "LET GO", "UP", T_ROLE(HL_ROLE[hui.ly % HL_N]), HC_INK};
-        } else if (hui.screen == HU_MIX) {
-            h[n++] = (hint_t){KC_OCTDN, "", "", T_KEY, T_INK};
-            h[n++] = (hint_t){KC_OCTUP, "LEVEL", "LVL", T_KEY, T_INK};
-            h[n++] = (hint_t){KC_GLO, "HOLD: MUTE", "MUTE", T_ROLE(UR_LOOP), HC_INK};
-            h[n++] = (hint_t){KC_HOME, "BACK", "BACK", T_KEY, T_INK};
-        } else if (hui.screen == HU_HOME) {
-            h[n++] = (hint_t){KC_SCL, "KEY", "KEY", HC_GREY, HC_INK};
-            h[n++] = (hint_t){KC_FX, "SOUND", "SND", HC_YELLOW, HC_INK};
-            h[n++] = (hint_t){KC_EDIT, "MODE", "MODE", HC_RED, HC_INK};         /* (dark on red: the panel LCD washes white out) */
-            h[n++] = (hint_t){KC_SAVE, "PRESET", "PRE", T_ROLE(UR_PRESET), HC_INK};
-        } else if (hui.screen == HU_PRESET) {
-            h[n++] = (hint_t){KC_SELECT, "SLOT", "SLOT", T_KEY, T_INK};
-            h[n++] = (hint_t){KC_OCTUP, "LOAD", "LOAD", T_KEY, T_INK};
-            h[n++] = (hint_t){KC_SAVE, "SAVE", "", T_ROLE(UR_PRESET), HC_INK};
-            h[n++] = (hint_t){KC_HOME, "BACK", "BACK", T_KEY, T_INK};
-        } else if (hui.screen == HU_LOOP) {
-            h[n++] = (hint_t){KC_SELECT, "LAYER", "LAYR", T_KEY, T_INK};
-            h[n++] = (hint_t){KC_REC, "REC", "", T_REC, HC_INK};
-            h[n++] = (hint_t){KC_PLAY, "PLAY", "", HC_GREEN, HC_INK};
-            h[n++] = (hint_t){KC_HOME, "BACK", "BACK", T_KEY, T_INK};
         } else if (hui.screen == HU_PICK) {
             h[n++] = (hint_t){KC_SELECT, "CHOOSE", "PICK", T_KEY, T_INK};
             h[n++] = (hint_t){KC_HOME, "BACK", "BACK", T_KEY, T_INK};
-        } else if (hui.screen == HU_SOUND && hui_fx_row(hui.sel[HU_SOUND])) {   /* an effect row: KNOB 4 = its amount */
-            h[n++] = (hint_t){KC_SELECT, "ROW", "ROW", T_KEY, T_INK};
-            h[n++] = (hint_t){KC_OCTUP, "TYPE", "TYPE", T_KEY, T_INK};
-            h[n++] = (hint_t){KC_K4, "AMOUNT", "AMT", HC_YELLOW, HC_INK};
+        } else if (hui.armed) {                          /* an action card armed: OCT+ does it */
+            h[n++] = (hint_t){KC_OCTUP, HK_NAME[hui.armed % HK_N], HK_NAME[hui.armed % HK_N], HU_COL(hui.screen), HC_INK};
+            h[n++] = (hint_t){KC_OCTDN, "CANCEL", "NO", T_KEY, T_INK};
+            if (hui.screen == HU_PRESET)
+                h[n++] = (hint_t){KC_SAVE, "NEXT", "NEXT", HU_COL(HU_PRESET), HC_INK};
             h[n++] = (hint_t){KC_HOME, "BACK", "BACK", T_KEY, T_INK};
-        } else {
-            h[n++] = (hint_t){KC_SELECT, "ROW", "ROW", T_KEY, T_INK};
-            h[n++] = (hint_t){KC_OCTDN, "", "", T_KEY, T_INK};
-            h[n++] = (hint_t){KC_OCTUP, "VALUE", "SET", T_KEY, T_INK};
-            h[n++] = (hint_t){KC_HOME, "BACK", "BACK", T_KEY, T_INK};
+        } else {                                         /* a menu: the knobs, SELECT, its button again, HOME */
+            static const uint8_t KC_OF[HU_N] = {0, KC_SCL, KC_FX, 0, KC_SAVE, KC_SEQ, 0, KC_GLO};
+            uint32_t sc = hui.screen;
+            h[n++] = (hint_t){KC_K14, "SET", "SET", T_KEY, T_INK};
+            if (sc != HU_LOOP)
+                h[n++] = (hint_t){KC_SELECT, sc == HU_PRESET ? "SLOT" : "PAGE", sc == HU_PRESET ? "SLOT" : "PAGE", T_KEY, T_INK};
+            h[n++] = (hint_t){KC_OF[sc], sc == HU_LOOP ? "BACK" : "NEXT", sc == HU_LOOP ? "BACK" : "NEXT", HU_COL(sc), HC_INK};
+            if (sc != HU_LOOP)
+                h[n++] = (hint_t){KC_HOME, "BACK", "BACK", T_KEY, T_INK};
         }
         for (pass = 0; pass < 3u; pass++) {             /* the long words; the short ones; the short ones without
                                                           * HOME's (its keycap says BACK) */
@@ -1419,12 +1466,9 @@ static void hui_draw_mode_body(void)
                 cv_text_c(x + 28, y + 7, &AF_S, "-", T_DIM, bg);
         }
         cv_blit(0, HU_HEAD);
-        cv_begin(240, 66, T_BG);
+        cv_begin(240, HU_KNOBS_Y - HU_HEAD - 124, T_BG);
         cv_text_on(4, 2, &AF_S, "KEYS WRITE   F#3 REST   PLAY RUNS", T_MID, T_BG);
-        fmt_int(b, hcs.len);
-        str_cpy(b + str_len(b), " STEPS", sizeof b - str_len(b));
-        cv_text_on(4, 24, &AF_M, b, HC_RED, T_BG);
-        cv_text_on(4, 47, &AF_M, HC_SOUNDS[c->sound % HC_NSOUNDS].name, HC_YELLOW, T_BG);
+        cv_text_on(4, 26, &AF_M, HC_SOUNDS[c->sound % HC_NSOUNDS].name, HC_YELLOW, T_BG);
         cv_blit(0, HU_HEAD + 124);
         return;
     }
@@ -1443,11 +1487,9 @@ static void hui_draw_mode_body(void)
         cv_text_c(209, 84, &AF_S, hc.dir != HD_NONE ? HR_NAME[hcd_rate_of_dir(hc.dir)] : "OFF", hc.dir != HD_NONE ? HC_INK : T_DIM,
                   hc.dir != HD_NONE ? HC_YELLOW : T_SURF);
         cv_blit(0, HU_HEAD);
-        cv_begin(240, 66, T_BG);
+        cv_begin(240, HU_KNOBS_Y - HU_HEAD - 124, T_BG);
         cv_text_on(4, 2, &AF_S, "WHITE KEYS: PADS   BLACK KEY: REPEAT", T_MID, T_BG);
-        cv_text_on(4, 22, &AF_M, "KIT", T_MID, T_BG);
-        cv_text_on(40, 22, &AF_M, N_DRUM_KIT[c->kit % 4u], HC_RED, T_BG);
-        hui_loop_strip(44);
+        hui_loop_strip(26);
         cv_blit(0, HU_HEAD + 124);
         return;
     }
@@ -1468,11 +1510,9 @@ static void hui_draw_mode_body(void)
                 cv_rrect(x, y, 12, 8, 2, on ? (now ? T_TEXT : T_DEG(j)) : now ? T_RAISE : T_SURF, T_BG);
             }
         cv_blit(0, HU_HEAD);
-        cv_begin(240, 66, T_BG);
-        cv_text_on(4, 2, &AF_S, "WHITE KEYS: STYLE   MODE MENU: VAR", T_MID, T_BG);
-        cv_text_on(4, 22, &AF_M, "KIT", T_MID, T_BG);
-        cv_text_on(40, 22, &AF_M, N_DRUM_KIT[c->kit % 4u], HC_RED, T_BG);
-        hui_loop_strip(44);
+        cv_begin(240, HU_KNOBS_Y - HU_HEAD - 124, T_BG);
+        cv_text_on(4, 2, &AF_S, "WHITE KEYS: STYLE   PLAY RUNS", T_MID, T_BG);
+        hui_loop_strip(26);
         cv_blit(0, HU_HEAD + 124);
         return;
     }
@@ -1516,9 +1556,9 @@ static void hui_draw_mode_body(void)
             }
         }
         cv_blit(0, HU_HEAD);
-        cv_begin(240, 66, T_BG);
-        cv_text_on(4, 2, &AF_S, "MODE MENU: SONG, DIFFICULTY, SPEED", T_MID, T_BG);
-        cv_text_on(4, 47, &AF_M, HC_SOUNDS[c->sound % HC_NSOUNDS].name, HC_YELLOW, T_BG);
+        cv_begin(240, HU_KNOBS_Y - HU_HEAD - 124, T_BG);
+        cv_text_on(4, 2, &AF_S, "PLAY STARTS AND STOPS THE SONG", T_MID, T_BG);
+        cv_text_on(4, 26, &AF_M, HC_SOUNDS[c->sound % HC_NSOUNDS].name, HC_YELLOW, T_BG);
         cv_blit(0, HU_HEAD + 124);
         return;
     }
@@ -1556,9 +1596,9 @@ static void hui_draw_mode_body(void)
         fmt_int(b + str_len(b), hcg.total);
         cv_text_r(236, 102, &AF_S, b, T_MID, T_BG);
         cv_blit(0, HU_HEAD);
-        cv_begin(240, 66, T_BG);
-        cv_text_on(4, 2, &AF_S, "F#3 REPLAYS   MODE MENU: EAR LEVEL", T_MID, T_BG);
-        cv_text_on(4, 47, &AF_M, HC_SOUNDS[c->sound % HC_NSOUNDS].name, HC_YELLOW, T_BG);
+        cv_begin(240, HU_KNOBS_Y - HU_HEAD - 124, T_BG);
+        cv_text_on(4, 2, &AF_S, "F#3 REPLAYS   PLAY: A NEW ROUND", T_MID, T_BG);
+        cv_text_on(4, 26, &AF_M, HC_SOUNDS[c->sound % HC_NSOUNDS].name, HC_YELLOW, T_BG);
         cv_blit(0, HU_HEAD + 124);
         return;
     }
@@ -1626,7 +1666,7 @@ static void hui_draw_mixer(void)
         cv_text_c(x + 28, 98, &AF_S, mute ? "MUTE" : HLS_NAME[st & 3u], mute ? T_INK : T_MID, mute ? HC_RED : T_LINE);
     }
     cv_blit(0, HU_HEAD);
-    cv_begin(240, 66, T_BG);
+    cv_begin(240, HU_KNOBS_Y - HU_HEAD - 124, T_BG);
     cv_text_on(4, 2, &AF_S, "ALGORITHM LAYER   OCT LEVEL", T_MID, T_BG);
     hui_chip(4, 24, hcl.metro ? "METRONOME ON" : "METRONOME OFF", hcl.metro ? HC_GREEN : T_MID, hcl.metro, T_BG);
     cv_blit(0, HU_HEAD + 124);
@@ -1693,27 +1733,27 @@ static void hui_draw_piano(uint32_t deg)
         start += (12u - start % 12u) % 12u;
     }
     for (i = 0; i < 28u; i++)                            /* the white keys, raised; the black ones cut out of them */
-        cv_rrect(8 + (int32_t)i * 8, 2, 7, 66, 1, T_RAISE, T_BG);
+        cv_rrect(8 + (int32_t)i * 8, 2, 7, 54, 1, T_RAISE, T_BG);
     for (i = start; i < start + 48u && i < 128u; i++)
         if (on[i] && !IS_BLACK[i % 12u]) {
             int32_t x = 8 + (int32_t)((i - start) / 12u * 7u + WHITE_OF[i % 12u]) * 8;
             uint16_t c = on[i] == 2u ? T_TEXT : ccol;
-            cv_rrect(x, 2, 7, 66, 1, c, T_BG);
+            cv_rrect(x, 2, 7, 54, 1, c, T_BG);
             if (on[i] == 1u && i % 12u == root)
-                cv_rrect(x + 2, 60, 3, 3, 1, T_INK, c);
+                cv_rrect(x + 2, 48, 3, 3, 1, T_INK, c);
         }
     for (i = start; i < start + 48u && i < 128u; i++)
         if (IS_BLACK[i % 12u]) {
             int32_t x = 8 + (int32_t)((i - start) / 12u * 7u + WHITE_OF[i % 12u]) * 8 + 5;
             uint16_t c = on[i] == 2u ? T_TEXT : on[i] ? ccol : T_BG;
-            cv_rect(x - 1, 2, 7, 41, T_BG);
-            cv_rrect(x, 2, 5, 40, 1, c, T_BG);
+            cv_rect(x - 1, 2, 7, 33, T_BG);
+            cv_rrect(x, 2, 5, 32, 1, c, T_BG);
             if (on[i] == 1u && i % 12u == root)
-                cv_rrect(x + 1, 32, 3, 3, 1, T_INK, c);
+                cv_rrect(x + 1, 26, 3, 3, 1, T_INK, c);
         }
     for (i = 0; i < 128u; i++)                           /* a note beyond the window: a dot at that edge */
         if (on[i] && (i < start || i >= start + 48u))
-            cv_rrect(i < start ? 2 : 234, 32, 4, 4, 2, on[i] == 2u ? T_TEXT : ccol, T_BG);
+            cv_rrect(i < start ? 2 : 234, 26, 4, 4, 2, on[i] == 2u ? T_TEXT : ccol, T_BG);
 }
 
 /* HOME's middle: the chord big, its degree and modifier; the keyboard; the sound and the effects */
@@ -1828,7 +1868,7 @@ static void hui_draw_home(void)
     }
     cv_blit(0, HU_HEAD);
     /* the keyboard: 16 white keys, 11 black, the held ones in their degree's colour, the directions dim */
-    cv_begin(240, 92, T_BG);
+    cv_begin(240, HU_KNOBS_Y - HU_HEAD - 98, T_BG);
     if (held && (c->play == HP_LEAD ? hui_lead_notes(k, held) > 0u : hc.cur.n > 0u)) {   /* a chord (LEAD: notes)
                                                                                            * sounds: the piano */
         hui_draw_piano(deg);
@@ -1851,14 +1891,14 @@ static void hui_draw_home(void)
                 if (j >= 0) {                            /* a strumplate key: a bar as high as its note */
                     int32_t h = 4 + j * 2;
                     f = on ? T_TEXT : T_SURF;
-                    cv_rrect(x, 2, ww, 66, 2, f, T_BG);
-                    cv_rrect(x + 4, 64 - h, ww - 8, h, 1, on ? T_BG : T_DIM, f);
+                    cv_rrect(x, 2, ww, 54, 2, f, T_BG);
+                    cv_rrect(x + 4, 52 - h, ww - 8, h, 1, on ? T_BG : T_DIM, f);
                     continue;
                 }
-                cv_rrect(x, 2, ww, 66, 2, f, T_BG);
+                cv_rrect(x, 2, ww, 54, 2, f, T_BG);
                 if (!on)
-                    cv_rrect(x + 3, 62, ww - 6, 3, 1, T_DEG(d), f);   /* the degree's colour */
-                cv_text_c(x + ww / 2 + 1, 44, &AF_S, dn, on ? T_INK : T_TEXT, f);   /* its number */
+                    cv_rrect(x + 3, 50, ww - 6, 3, 1, T_DEG(d), f);   /* the degree's colour */
+                cv_text_c(x + ww / 2 + 1, 34, &AF_S, dn, on ? T_INK : T_TEXT, f);   /* its number */
             }
         }
         for (i = 0; i < 27u; i++) {
@@ -1867,32 +1907,32 @@ static void hui_draw_home(void)
                 static const uint8_t AFTER[HC_NBLACK] = {0, 1, 2, 4, 5, 7, 8, 9, 11, 12, 14};   /* the white key it follows */
                 int32_t x = x0 + (int32_t)AFTER[p] * (ww + 1) + ww - 4;
                 uint16_t col = on ? (p < 3u ? HC_GREEN : HC_YELLOW) : T_BG;
-                cv_rect(x - 1, 2, 11, 41, T_BG);         /* a gap round it */
+                cv_rect(x - 1, 2, 11, 33, T_BG);         /* a gap round it */
                 if (!on)
-                    cv_rrect(x, 2, 9, 40, 2, T_LINE, T_BG), cv_rrect(x + 1, 2, 7, 39, 2, T_BG, T_LINE);
+                    cv_rrect(x, 2, 9, 32, 2, T_LINE, T_BG), cv_rrect(x + 1, 2, 7, 31, 2, T_BG, T_LINE);
                 else
-                    cv_rrect(x, 2, 9, 40, 2, col, T_BG);
+                    cv_rrect(x, 2, 9, 32, 2, col, T_BG);
                 if (p < 3u) {                            /* INVERT LOCK HOLD */
                     char fl[2] = {"ILH"[p], 0};
-                    cv_text_c(x + 5, 14, &AF_S, fl, on ? T_INK : T_MID, col);
+                    cv_text_c(x + 5, 10, &AF_S, fl, on ? T_INK : T_MID, col);
                 } else {                                 /* a joystick direction: the dot where it points */
                     static const int8_t DX[8] = {0, 1, 1, 1, 0, -1, -1, -1}, DY[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
                     uint32_t dir = HC_BLACK_FN[p] - HD_UP;
-                    cv_rrect(x + 3 + DX[dir % 8u] * 2, 20 + DY[dir % 8u] * 8, 3, 3, 1, on ? T_INK : T_MID, col);
+                    cv_rrect(x + 3 + DX[dir % 8u] * 2, 16 + DY[dir % 8u] * 6, 3, 3, 1, on ? T_INK : T_MID, col);
                 }
             }
         }
     }
     {
         /* the sound and its effects */
-        cv_text_on(4, 73, &AF_M, HC_SOUNDS[c->sound % HC_NSOUNDS].name, HC_YELLOW, T_BG);
+        cv_text_on(4, 59, &AF_M, HC_SOUNDS[c->sound % HC_NSOUNDS].name, HC_YELLOW, T_BG);
         {
             static const char *const CHIP[12] = {"REV", "DLY", "CHO", "FLG", "TRM", "LFO", "GLD", "DRV", "TAPE", "FLT", "HP", "ST"};
             int32_t x = 236;
             for (i = 12; i > 0; i--)
                 if ((fxm >> (i - 1u)) & 1u) {
                     x -= hui_chip_w(CHIP[i - 1u]) + 3;
-                    hui_chip(x, 74, CHIP[i - 1u], HC_YELLOW, 0, T_BG);
+                    hui_chip(x, 60, CHIP[i - 1u], HC_YELLOW, 0, T_BG);
                 }
         }
     }
@@ -1932,116 +1972,192 @@ static void hui_row(int32_t y, const char *label, const char *val, int sel, int 
     cv_text_r(226, y + 1, &AF_M, act ? "GO" : val, act ? (sel ? col : T_DIM) : sel ? col : T_TEXT, bg);
 }
 
-/* a scroll bar at the right edge when the rows do not all show */
-static void hui_scroll(uint32_t n, uint32_t top, uint16_t col)
+/* a menu's page (after JIANT): the header (the menu's name on a chip in its colour, the page's name; at the right
+ * the layer it sets and the page's place, n/N); the groups as tabs under it, a dot a page (a one-page menu: what its
+ * button does again; LOOPER: the loop); then the four cards, KNOB 1..4 left to right */
+#define HU_TABS_Y 26
+#define HU_BODY_Y 48
+#define HU_CARD_H (HU_FOOT_Y - 4 - HU_BODY_Y)
+static void hui_tile_text(int32_t x, int32_t y, int32_t w, int32_t h, const char *s, uint16_t fg, uint16_t bg);   /* (below) */
+static void hui_draw_page_head(void)
 {
-    int32_t bar = HU_FOOT_Y - HU_ROWS_Y - 6, th = bar * HU_NROWS_SHOWN / (int32_t)n;
-    if (n <= HU_NROWS_SHOWN)
+    uint32_t sc = hui.screen, n = HU_SEC[sc].n, pi = hui.page[sc] % n, i, g, per = 0;
+    const hu_page_t *pg = hui_page();
+    uint16_t col = HU_COL(sc);
+    uint32_t sig = sc * 5u + pi * 131u + song.sel * 31u + str_hash(3u, pg->name) + (hui.msg_t ? str_hash(5u, hui.msg) : 0u) +
+                   ux.gen * 7919u;
+    int32_t x;
+    for (i = 0; i < 4u; i++)
+        per |= pg->card[i] && !hui_card_global(pg->card[i]);
+    if (sc == HU_LOOP)
+        for (i = 0; i < HCL_LAYERS; i++)
+            sig += (hcl.l[i].state + 1u) * (7u << (3u * i)) + hcl.playing * 997u + (hcl.len ? hcl.pos * 64u / hcl.len : 0u) * 977u +
+                   (hcl.l[i].state == HLS_REC ? (hc.clock - hcl.l[i].start) / (beat_samples() * 4u + 1u) * 31u : 0u);
+    if (!hui.force && sig == hui.sig[0])
         return;
-    cv_rrect(237, HU_ROWS_Y + 2, 2, bar, 1, T_LINE, T_BG);
-    cv_rrect(237, HU_ROWS_Y + 2 + (bar - th) * (int32_t)top / (int32_t)(n - HU_NROWS_SHOWN), 2, th, 1, col, T_LINE);
+    hui.sig[0] = sig;
+    cv_begin(240, HU_BODY_Y - 2, T_BG);
+    if (hui.msg_t) {
+        hui_draw_msg();
+    } else {
+        int32_t w = text_w(&AF_M, HU_SEC[sc].title) + 14, xr = 236;
+        char b[12];
+        cv_rrect(4, 3, w, 18, 3, col, T_BG);
+        cv_text_c(4 + w / 2, 2, &AF_M, HU_SEC[sc].title, T_INK, col);
+        if (n > 1u) {
+            fmt_int(b, (int32_t)pi + 1);
+            str_cpy(b + str_len(b), "/", sizeof b - str_len(b));
+            fmt_int(b + str_len(b), (int32_t)n);
+            xr = cv_text_r(236, 5, &AF_S, b, T_MID, T_BG) - 8;
+        }
+        if (per) {                                       /* the layer this page sets */
+            char l[3] = {'L', (char)('1' + song.sel % NTRK), 0};
+            xr -= hui_chip_w(l);
+            hui_chip(xr, 4, l, HU_LCOL(song.sel), 1, T_BG);
+            xr -= 8;
+        }
+        cv_text_fit(4 + w + 8, 2, &AF_M, pg->name, T_TEXT, T_BG, xr - (4 + w + 8));
+        cv_rect(4, HU_HEAD - 1, 232, 1, T_LINE);
+    }
+    if (sc == HU_LOOP) {
+        hui_loop_strip(HU_TABS_Y);
+    } else if (n == 1u) {
+        cv_text_on(4, HU_TABS_Y + 1, &AF_S, "SAVE AGAIN: THE NEXT SLOT", T_MID, T_BG);
+    } else {
+        for (g = 0, x = 4; g < 3u && HU_SEC[sc].group[g]; g++) {   /* the tabs: the groups, a dot a page */
+            uint32_t np = 0;
+            int on = pg->group == g;
+            x += hui_chip(x, HU_TABS_Y, HU_SEC[sc].group[g], on ? col : T_MID, on, T_BG) + 4;
+            for (i = 0; i < n; i++)
+                np += HU_SEC[sc].pg[i].group == g;
+            for (i = 0; i < n && np > 1u; i++)
+                if (HU_SEC[sc].pg[i].group == g) {
+                    cv_rrect(x, HU_TABS_Y + 6, 5, 5, 2, i == pi ? col : T_LINE, T_BG);
+                    x += 8;
+                }
+            x += 8;
+        }
+    }
+    cv_blit(0, 0);
 }
 
-/* a menu: its rows, the selected one marked in the menu's colour */
-static void hui_draw_menu(void)
+/* the four cards: the name, the value (large, or smaller, or on two lines), a line under it (MIX: the layer's state;
+ * PRESETS: the slot's name), a gauge for a number; an armed action filled in the menu's colour, saying OCT+; no card
+ * an outline. MIX's cards each in their layer's colour */
+static void hui_draw_page(void)
 {
-    uint32_t sc = hui.screen, nrows = HU_ROWS[sc], i, sig = sc * 3u + hui.sel[sc] * 17u + ux.gen * 7919u, pass;
-    char val[20];
-    const char *const *labels = sc == HU_KEY ? RK_LABEL : sc == HU_SOUND ? RS_LABEL : sc == HU_MODE ? RM_LABEL :
-                                sc == HU_LOOP ? RL_LABEL : 0;
+    uint32_t sc = hui.screen, i, pass, sig = 0xCA4Du + sc * 3u + hui.page[sc] * 17u + hui.armed * 101u + song.sel * 7u + ux.gen * 7919u;
+    const hu_page_t *pg = hui_page();
     uint16_t col = HU_COL(sc);
-    if (hui.sel[sc] < hui.top[sc])
-        hui.top[sc] = hui.sel[sc];
-    if (hui.sel[sc] >= hui.top[sc] + HU_NROWS_SHOWN)
-        hui.top[sc] = (uint8_t)(hui.sel[sc] - HU_NROWS_SHOWN + 1u);
-    for (i = 0; i < nrows; i++) {
-        hui_row_value(sc, i, val);
-        sig = str_hash(sig + i * 7u, val);
+    char v[20], sub[20];
+    int32_t f;
+    for (i = 0; i < 4u; i++) {
+        sig = str_hash(sig + pg->card[i] * 13u, HK_NAME[pg->card[i] % HK_N]);
+        if (pg->card[i]) {
+            hui_card(pg->card[i], v, &f);
+            hui_card_sub(pg->card[i], sub);
+            sig = str_hash(str_hash(sig + (uint32_t)f, v), sub);
+        }
+        if (pg->card[i] >= HK_L1 && pg->card[i] <= HK_L4)
+            sig += (uint32_t)trk[pg->card[i] - HK_L1].p[P_MUTE] * (31u << i);
     }
-    sig += hui.top[sc] * 131u + (sc == HU_LOOP ? hcl.playing * 7u + (hcl.len ? hcl.pos * 16u / hcl.len : 0u) * 977u : 0u);
     if (!hui.force && sig == hui.sig[1])
         return;
     hui.sig[1] = sig;
-    for (pass = 0; pass < 2u; pass++) {
-        int32_t top = pass ? HU_ROWS_Y + 124 : HU_ROWS_Y;
-        uint32_t h = pass ? (uint32_t)(HU_FOOT_Y - HU_ROWS_Y - 124) : 124u;
+    for (pass = 0; pass < 2u; pass++) {                  /* (two strips: the canvas is 124 rows; the text all in the
+                                                          * first, the gauges across both) */
+        int32_t top = HU_BODY_Y + (pass ? 82 : 0);
+        uint32_t h = pass ? (uint32_t)(HU_FOOT_Y - HU_BODY_Y - 82) : 82u;
         cv_begin(240, h, T_BG);
         cv_oy = -top;
-        for (i = hui.top[sc]; i < nrows && i < hui.top[sc] + HU_NROWS_SHOWN; i++) {
-            int32_t y = HU_ROWS_Y + (int32_t)(i - hui.top[sc]) * HU_ROW;
-            char lb[20];
-            int act;
-            if (y + HU_ROW <= top || y >= top + (int32_t)h)
+        for (i = 0; i < 4u; i++) {
+            uint32_t k = pg->card[i];
+            int32_t x = 4 + (int32_t)i * 59, y = HU_BODY_Y;
+            uint16_t cc = k >= HK_L1 && k <= HK_L4 ? HU_LCOL(k - HK_L1) : col, bg, fg;
+            int act, armed;
+            if (!k) {
+                cv_rrect(x, y, 56, HU_CARD_H, 3, T_LINE, T_BG);
+                cv_rrect(x + 1, y + 1, 54, HU_CARD_H - 2, 2, T_BG, T_LINE);
                 continue;
-            act = hui_row_value(sc, i, val);
-            if (sc == HU_PRESET) {
-                str_cpy(lb, "P1", sizeof lb);
-                lb[1] = (char)('1' + i);
-            } else {
-                str_cpy(lb, labels[i], sizeof lb);
             }
-            hui_row(y, lb, val, i == hui.sel[sc], act, col);
+            act = hui_card(k, v, &f);
+            hui_card_sub(k, sub);
+            armed = act && hui.armed == k;
+            bg = armed ? cc : T_SURF;
+            fg = armed ? T_INK : act ? cc : T_TEXT;
+            cv_rrect(x, y, 56, HU_CARD_H, 3, bg, T_BG);
+            cv_rrect(x, y, 56, 3, 1, cc, bg);
+            cv_text_c(x + 28, y + 8, &AF_S, HK_NAME[k], armed ? T_INK : T_MID, bg);   /* (every name fits 52 px) */
+            if (armed)
+                str_cpy(v, "OCT+", sizeof v);
+            if (text_w(&AF_M, v) <= 52)                 /* the value: M, or on one or two S lines */
+                cv_text_c(x + 28, y + 28, &AF_M, v, fg, bg);
+            else
+                hui_tile_text(x, y + 24, 56, 34, v, fg, bg);
+            if (sub[0] && text_w(&AF_S, sub) <= 52)
+                cv_text_c(x + 28, y + 56, &AF_S, sub, armed ? T_INK : T_MID, bg);
+            else if (sub[0])
+                cv_text_fit(x + 3, y + 56, &AF_S, sub, armed ? T_INK : T_MID, bg, 50);
+            if (f >= 0) {                                /* the gauge, filled from the foot */
+                int32_t gh = HU_CARD_H - 88, fh = gh * f / 1000;
+                int mute = k >= HK_L1 && k <= HK_L4 && trk[k - HK_L1].p[P_MUTE];
+                cv_rrect(x + 22, y + 80, 12, gh, 3, T_LINE, bg);
+                if (fh > 0)
+                    cv_rrect(x + 22, y + 80 + gh - fh, 12, fh, fh >= 6 ? 3 : 1, mute ? T_DIM : cc, T_LINE);
+            }
         }
-        hui_scroll(nrows, hui.top[sc], col);
         cv_oy = 0;
         cv_blit(0, (uint32_t)top);
     }
 }
 
-static void hui_draw_menu_head(void)
-{
-    uint32_t sc = hui.screen, sig = sc * 5u + 2u + (hui.msg_t ? str_hash(5u, hui.msg) : 0u) + ux.gen * 7919u;
-    if (!hui.force && sig == hui.sig[0])
-        return;
-    hui.sig[0] = sig;
-    hui_title(HU_TITLE[sc], sc == HU_KEY ? "KEY & CHORDS" : sc == HU_SOUND ? "SOUND, FX, SETUP" :
-              sc == HU_MODE ? "MODES & TEMPO" : sc == HU_LOOP ? "4 LAYERS" : sc == HU_MIX ? "4 LAYERS" : "P1 - P4", HU_COL(sc));
-}
-
-/* a list: its title, the choices with the current one marked (scrolled to it), a scroll bar */
+/* a list over the screen while its knob turns: SOUND the choice large between the one before and the one after
+ * (no scrolling), LAYERS the four with their sound and style */
 static void hui_draw_pick(void)
 {
-    static const char *const TITLE[4] = {"ENVELOPE", "LFO", "SOUND", "LAYERS"};
-    static const char *const SUB[4] = {"ENV: BACK", "LFO: BACK", "PRESETS KNOB", "ALGORITHM KNOB"};
-    uint32_t k = hui.pick_kind % 4u, n = hui_pick_count(k), cur = hui_pick_cur(k), i, top, pass;
+    static const char *const TITLE[2] = {"SOUND", "LAYERS"};
+    static const char *const SUB[2] = {"PRESETS KNOB", "ALGORITHM KNOB"};
+    uint32_t k = hui.pick_kind % 2u, n = hui_pick_count(k), cur = hui_pick_cur(k) % n, i;
     uint16_t col = k == PK_LAYER ? HU_LCOL(cur) : HC_YELLOW;
     uint32_t sig = 0x50494Bu + k * 7u + cur * 13u + n * 3u + ux.gen * 7919u;
     if (k == PK_LAYER)
         for (i = 0; i < NTRK; i++)
             sig += (hc.t[i].sound * 7u + hc.t[i].play * 3u + hcl.l[i].state + (uint32_t)trk[i].p[P_MUTE] * 5u) * (97u << i);
-    if (cur >= hui.top[HU_PICK] + HU_NROWS_SHOWN)
-        hui.top[HU_PICK] = (uint8_t)(cur - HU_NROWS_SHOWN + 1u);
-    if (cur < hui.top[HU_PICK])
-        hui.top[HU_PICK] = (uint8_t)cur;
-    top = hui.top[HU_PICK];
-    sig += top * 131u;
     if (!hui.force && sig == hui.sig[1])
         return;
     hui.sig[1] = sig;
     hui.sig[0] = 0;
     hui_title(TITLE[k], SUB[k], col);
-    for (pass = 0; pass < 2u; pass++) {
-        int32_t y0 = pass ? HU_ROWS_Y + 124 : HU_ROWS_Y;
-        uint32_t h = pass ? (uint32_t)(HU_FOOT_Y - HU_ROWS_Y - 124) : 124u;
-        cv_begin(240, h, T_BG);
-        cv_oy = -y0;
-        for (i = top; i < n && i < top + HU_NROWS_SHOWN; i++) {
-            int32_t y = HU_ROWS_Y + (int32_t)(i - top) * HU_ROW;
-            if (y + HU_ROW <= y0 || y >= y0 + (int32_t)h)
-                continue;
-            if (k == PK_LAYER) {                         /* [L2] JUNO POLY       STRUM */
-                uint16_t bg = i == cur ? T_SURF : T_BG;
-                char lb[4] = {'L', (char)('1' + i), 0, 0};
-                hui_row(y, "", trk[i].p[P_MUTE] ? "MUTED" : HP_SHORT[hc.t[i].play % HP_COUNT], i == cur, 0, HU_LCOL(i));
-                hui_chip(14, y + 2, lb, HU_LCOL(i), 1, bg);
-                cv_text_on(48, y + 3, &AF_S, hui_pick_name(k, i), i == cur ? T_TEXT : T_MID, bg);
-            } else {
-                hui_row(y, hui_pick_name(k, i), 0, i == cur, 0, col);
-            }
+    if (k == PK_LAYER) {
+        cv_begin(240, (uint32_t)(NTRK * HU_ROW), T_BG);
+        cv_oy = -HU_ROWS_Y;
+        for (i = 0; i < NTRK; i++) {                     /* [L2] JUNO POLY       STRUM */
+            int32_t y = HU_ROWS_Y + (int32_t)i * HU_ROW;
+            uint16_t bg = i == cur ? T_SURF : T_BG;
+            char lb[4] = {'L', (char)('1' + i), 0, 0};
+            hui_row(y, "", trk[i].p[P_MUTE] ? "MUTED" : HP_SHORT[hc.t[i].play % HP_COUNT], i == cur, 0, HU_LCOL(i));
+            hui_chip(14, y + 2, lb, HU_LCOL(i), 1, bg);
+            cv_text_on(48, y + 3, &AF_S, hui_pick_name(k, i), i == cur ? T_TEXT : T_MID, bg);
         }
-        hui_scroll(n, top, col);
         cv_oy = 0;
-        cv_blit(0, y0);
+        cv_blit(0, HU_ROWS_Y);
+        return;
+    }
+    {
+        char b[12];
+        cv_begin(240, 124, T_BG);
+        if (cur > 0u)
+            cv_text_c(120, 8, &AF_M, hui_pick_name(k, cur - 1u), T_DIM, T_BG);
+        cv_rrect(4, 38, 232, 34, 4, T_SURF, T_BG);
+        cv_rrect(4, 38, 4, 34, 2, col, T_SURF);
+        cv_text_c(122, 45, &AF_M, hui_pick_name(k, cur), col, T_SURF);
+        if (cur + 1u < n)
+            cv_text_c(120, 84, &AF_M, hui_pick_name(k, cur + 1u), T_DIM, T_BG);
+        fmt_int(b, (int32_t)cur + 1);
+        str_cpy(b + str_len(b), " / ", sizeof b - str_len(b));
+        fmt_int(b + str_len(b), (int32_t)n);
+        cv_text_c(120, 107, &AF_S, b, T_MID, T_BG);
+        cv_blit(0, 56);
     }
 }
 
@@ -2133,21 +2249,11 @@ static void hui_draw(void)
     } else if (hui.screen == HU_HOME) {
         hui_draw_head();
         hui_draw_home();
-    } else if (hui.screen == HU_MIX) {
-        uint32_t sig = 0x4D4958u + song.sel * 7u + hcl.metro * 11u + ux.gen * 7919u, i;
-        for (i = 0; i < NTRK; i++)
-            sig += ((uint32_t)trk[i].p[P_LEVEL] + 1u + (uint32_t)trk[i].p[P_MUTE] * 300u + hcl.l[i].state * 1000u) * (13u << i);
-        hui_draw_menu_head();
-        if (hui.force || sig != hui.sig[1]) {
-            hui.sig[1] = sig;
-            cv_begin(240, 124, T_BG);
-            hui_draw_mixer();
-        }
     } else if (hui.screen == HU_PICK) {
         hui_draw_pick();
-    } else {
-        hui_draw_menu_head();
-        hui_draw_menu();
+    } else if (hui_paged(hui.screen)) {
+        hui_draw_page_head();
+        hui_draw_page();
     }
     hui_draw_foot();
     hui.force = 0;

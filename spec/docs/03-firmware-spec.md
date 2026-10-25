@@ -96,18 +96,18 @@ Felucca logical names (physical silkscreen may differ; use Felucca's panel calib
 | Felucca name | chord machine equivalent | Function |
 |---|---|---|
 | HOME | — | Play screen. Press again toggles the big-chord view and the piano-roll view. |
-| SCL | Gray | Key & scale menu. Hold + encoder: key / scale / octave. |
-| FX | Yellow | Sounds & effects menu. |
-| EDIT | Red | Mode & tempo menu. Triple-tap = tap tempo. |
-| ENV | Gray+wheel / Yellow+wheel | Cycle envelope presets; hold + KNOB 2/3 = attack/release. |
-| LFO | LFO setting | Cycle vibrato OFF/LOW/MED/HIGH. |
-| GLO | settings | System settings (voices, stereo, bass, glide, V.LEAD, MIDI, speaker). |
-| SAVE | Yellow+Red | Preset menu: hold = save to selected slot, tap = load. |
-| ARP | Red+5 | Jump to Arp mode (tap again returns to Play). Hold + white keys 1–6 = pattern, 7 = layering. |
-| SEQ | Red+7 | Jump to Sequencer mode. |
+| SCL | Gray | KEY menu (pages KEY, CHORD). Held: a layer, any key sets the key. |
+| FX | Yellow | SOUND menu (pages FILTER, AMP, SPACE, MOTION, WOBBLE, COLOUR). Held: a sound on each white key. |
+| EDIT | Red | Tapped: the next play style (its settings are HOME's knobs). Held: a style on each white key. |
+| ENV | Gray+wheel / Yellow+wheel | SOUND › AMP: envelope preset, attack, release, glide. |
+| LFO | LFO setting | SOUND › WOBBLE: tremolo, vibrato OFF/LOW/MED/HIGH, stereo. |
+| GLO | settings | MIX menu (pages MIX: the four levels, TEMPO: BPM and metronome, SETUP: speaker, output, MIDI in, theme). Held: mutes, tap tempo. |
+| SAVE | Yellow+Red | PRESETS: opens with SAVE armed (OCT+ saves); tapped again: the next slot; KNOB 2 + OCT+ loads. Held: keys 1–4 load, 5–8 save. |
+| ARP | Red+5 | The play style before (EDIT: the next). |
+| SEQ | Red+7 | LOOPER page: bars, clear all (armed with KNOB 4, done with OCT+). |
 | PLAY | joystick click (transport) | Looper: play/pause all. In Sequencer: start/stop. |
 | REC | joystick click (track) | Looper: arm → record → loop → off cycle on the selected track. Hold 0.7 s = clear track. |
-| OCT− / OCT+ | Gray + U/D | Global octave −2…+2. Both together = randomize (sound in FX menu, all in SCL menu, pattern in EDIT menu). |
+| OCT− / OCT+ | Gray + U/D | Global octave −2…+2; on an armed action card OCT+ does it, OCT− cancels. Both together = randomize (sound in FX menu, pattern in EDIT menu, all elsewhere). |
 
 Hold-gesture equivalents of chord machine combos: SCL + ENC = key; EDIT + white key = quick mode (Play, Strum, Lead, Drone, Arp, Repeat, Drum); FX + white key = quick sound 1–7; SCL + EDIT = battery; SCL + EDIT held 5 s = factory reset; SCL + FX + EDIT held 5 s = enter Felucca's update loader.
 
@@ -115,13 +115,10 @@ Hold-gesture equivalents of chord machine combos: SCL + ENC = key; EDIT + white 
 
 | Felucca name | Home screen | In a menu |
 |---|---|---|
-| SELECT | select looper track 1–6 | navigate list / change value |
-| ALGORITHM | play mode (Play, Strum, Lead, Drone, Arp, Repeat, Seq, Drum, Drum Loop, Mixer, games) | mode parameter (strum speed, arp rate, difficulty) |
-| PRESETS | sound (the 39-ish list) | sound |
-| KNOB 1 | filter cutoff (chord machine Red + wheel) | context |
-| KNOB 2 | attack | context |
-| KNOB 3 | release | context |
-| KNOB 4 | BPM | context |
+| SELECT | the key | the menu's pages (MODE: the style, PRESETS: the slot) |
+| ALGORITHM | the layer 1–4 | the layer |
+| PRESETS | sound (the 38 sounds) | sound |
+| KNOB 1–4 | the play style's four, named along the foot: cutoff, resonance, attack, release while it plays the sound (STRUM: speed for attack); ARP pattern, rate, layer, cutoff; LOOPS loop, variation, kit, tempo; DRUM / SEQ kit / length, cutoff, resonance, tempo; HIRO song, difficulty, speed; EAR level | the page's four cards |
 | Master pot | volume (hardware) | volume |
 
 Encoders have no push; everything a chord machine does with "click" lives on REC/PLAY/OCT±.
@@ -135,7 +132,7 @@ Home screen regions, drawn with Felucca's strip canvas:
 - Lower band (160–200): a 2-octave piano strip with sounding notes highlighted and the bass note marked.
 - Bottom band (200–240): six looper track glyphs (empty outline / armed / recording / playing / muted), sequencer position when running.
 
-Menus are full-height lists, 7 rows visible. Every menu times out to Home after 3 s of no input (chord machine behaviour).
+Menus are pages of four cards, after JIANT: the menu and page name on top with the page's place (n/N), the groups as tabs with a dot per page, then four cards in knob order (name, value, a gauge for numbers). No list scrolls. A menu stays open until HOME; tapping its button again goes to the next page, round. The PRESETS and ALGORITHM lists show over the screen while their knob turns and go 1.5 s after.
 
 ## 4. Architecture
 

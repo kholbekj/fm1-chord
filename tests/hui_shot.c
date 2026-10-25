@@ -91,35 +91,34 @@ int main(int argc, char **argv)
     hui.force = 1;
     hframes(3);
     ppm(argv[1], "home_fx");
-    press(B_SCL);
-    hframes(3);
+    press(B_SCL); hframes(3);                            /* the menus: a page of four cards each */
     ppm(argv[1], "menu_key");
-    press(B_FX);
-    hframes(3);
+    press(B_SCL); hframes(3);                            /* SCL again: the next page */
+    ppm(argv[1], "menu_chord");
+    press(B_FX); hframes(3);
     ppm(argv[1], "menu_sound");
-    press(B_HOME); press(B_ENV); hframes(3);             /* the ENVELOPE page */
-    ppm(argv[1], "pick_env");
-    press(B_ENV); turn(EN_PRESET, 1); hframes(2);         /* the sound list while the PRESETS knob turns */
+    press(B_FX); hframes(3);
+    ppm(argv[1], "menu_sound_amp");
+    press(B_FX); hframes(3);                             /* (HALL on: its amount, a gauge) */
+    ppm(argv[1], "menu_sound_amount");
+    press(B_FX); hframes(3);
+    ppm(argv[1], "menu_sound_motion");
+    press(B_FX); hframes(3);
+    ppm(argv[1], "menu_sound_wobble");
+    press(B_FX); hframes(3);
+    ppm(argv[1], "menu_sound_colour");
+    turn(EN_PRESET, 1); hframes(2);                      /* the sound list while the PRESETS knob turns */
     ppm(argv[1], "pick_sound");
     fm1_ms += 1600; hframes(2); turn(EN_PRESET, -1); fm1_ms += 1600; hframes(2);
-    hui_open(HU_SOUND); hframes(2);
-    hui.sel[HU_SOUND] = RS_REV; hframes(3);              /* an effect row: the amount, KNOB 4's hint */
-    ppm(argv[1], "menu_sound_amount");
-    hui.sel[HU_SOUND] = RS_SOUND; hframes(2);
-    turn(EN_SELECT, 9);
-    hframes(3);
-    ppm(argv[1], "menu_sound_fx");
-    turn(EN_SELECT, 9);
-    hframes(3);
-    ppm(argv[1], "menu_sound_settings");
-    press(B_EDIT);
-    hframes(3);
-    ppm(argv[1], "menu_mode");
-    press(B_SAVE);
-    hframes(3);
+    press(B_GLO); hframes(3);
+    ppm(argv[1], "menu_mix");
+    press(B_GLO); hframes(3);
+    ppm(argv[1], "menu_tempo");
+    press(B_GLO); hframes(3);
+    ppm(argv[1], "menu_setup");
+    press(B_SAVE); hframes(3);                           /* PRESETS: SAVE armed */
     ppm(argv[1], "menu_presets");
-    press(B_SAVE);                                       /* SAVE again: saved P1 */
-    hframes(3);
+    press(B_OCTUP); hframes(3);                          /* OCT+: saved P1 */
     ppm(argv[1], "menu_presets_saved");
     press(B_HOME);
     hframes(3);
@@ -151,7 +150,8 @@ int main(int argc, char **argv)
     hcl_clear_all(); hcl.bars = 0; hframes(2);
     hui_mode_set(&trk[0], HP_PLAY);
     trk[1].p[P_MUTE] = 1; trk[2].p[P_LEVEL] = 70;
-    press(B_GLO); hframes(3);                            /* GLO tapped: the MIX screen */
+    hui.page[HU_MIX] = 0;
+    press(B_GLO); hframes(3);                            /* GLO tapped: the MIX page */
     ppm(argv[1], "mode_mixer");
     press(B_HOME);
     press(B_SEQ);
