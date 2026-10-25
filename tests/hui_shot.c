@@ -44,6 +44,8 @@ static void hui_power_on(void)
     hframes(2);                                           /* (hui_track_init: the sound, CHRD HI) */
 }
 
+static void hc_mode_shot(uint32_t t, uint32_t play) { hui_mode_set(&trk[t], play); }
+
 int main(int argc, char **argv)
 {
     uint32_t i;
@@ -147,11 +149,11 @@ int main(int argc, char **argv)
     hframes(3);
     ppm(argv[1], "mode_drumloop_rec");
     hcl_clear_all(); hcl.bars = 0; hframes(2);
-    hui_mode_set(&trk[0], HP_MIXER);
-    trk[1].p[P_MUTE] = 1; trk[2].p[P_LEVEL] = 70;
-    hframes(3);
-    ppm(argv[1], "mode_mixer");
     hui_mode_set(&trk[0], HP_PLAY);
+    trk[1].p[P_MUTE] = 1; trk[2].p[P_LEVEL] = 70;
+    press(B_GLO); hframes(3);                            /* GLO tapped: the MIX screen */
+    ppm(argv[1], "mode_mixer");
+    press(B_HOME);
     press(B_SEQ);
     hcl.l[0].state = HLS_PLAY; hcl.l[1].state = HLS_REC; hcl.len = 88200; hcl.pos = 30000; hcl.playing = 1;
     hui.force = 1;
@@ -172,5 +174,27 @@ int main(int argc, char **argv)
     for (i = 0; i < 4200; i++) { events_block(CTL); if (i % 22u == 0u) frame(); }
     hframes(3);
     ppm(argv[1], "mode_ear");
+    hui_mode_set(&trk[0], HP_PLAY);
+    trk[1].p[P_MUTE] = 0;
+    hc_sound_load(&trk[1], 25); hc_mode_shot(1, HP_STRUM);   /* the layers: their own sounds and styles */
+    hc_sound_load(&trk[2], 37); hc_mode_shot(2, HP_LEAD);
+    hc_sound_load(&trk[3], 27); hc_mode_shot(3, HP_DRUM);
+    turn(EN_ALGO, 1); hframes(3);                        /* ALGORITHM: layer 2, the layers' list */
+    ppm(argv[1], "pick_layers");
+    fm1_ms += 1600; hframes(3);
+    ppm(argv[1], "home_layer2");
+    turn(EN_ALGO, -1); fm1_ms += 1600; hframes(2);
+    {   /* each menu button held: its layer's map */
+        static const uint8_t B[5] = {B_SCL, B_FX, B_EDIT, B_GLO, B_SAVE};
+        static const char *const N[5] = {"layer_key", "layer_sound", "layer_mode", "layer_mix", "layer_presets"};
+        for (i = 0; i < 5u; i++) {
+            fm1_in.buttons |= 1u << panel.btn[B[i]];
+            host_pressed |= 1u << panel.btn[B[i]];
+            hframes(25);
+            ppm(argv[1], N[i]);
+            fm1_in.buttons &= ~(1u << panel.btn[B[i]]);
+            hframes(3);
+        }
+    }
     return 0;
 }

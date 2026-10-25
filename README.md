@@ -22,13 +22,18 @@ sequencer, drum pads, 56 drum loops, a 4-layer looper, a mixer, Chord Hiro and t
 wheel; key, scale, bass, voices, voice leading; four presets; MIDI in and out. Only the mic features and
 Bluetooth are missing.
 
-**Controls.** Three menus on three buttons, colour-coded: **SCL** key (grey),
-**FX** sound (yellow), **EDIT** mode (red), **SAVE** presets. The PRESETS and ALGORITHM knobs pick the
-sound and the mode from a list, ENV and LFO open theirs, KNOB 1 to 4 are filter, resonance, attack
-and release with the value shown as you turn (KNOB 4 sets an effect's amount on its row in the sound
-menu); tempo is on the mode menu and EDIT tapped three times. Chords over
-drums: record the drum loop into a looper layer; the drum screens show the loop to time it. Your
-settings come back after power-off. HOME held gives you Felucca's full synth underneath; hold HOME and press SAVE to come back to the chord UI.
+**Controls.** Four layers, as in SLOOP and JIANT: **ALGORITHM** picks layer 1 to 4, each with its own
+sound and play style, and the looper records into the selected one. The menu buttons, colour-coded, open
+their menu when tapped and are a layer when held: the white keys and KNOB 1 to 4 change job while the
+button is down, their map on the screen. **SCL** key (any key sets the key; knobs scale, bass, voices,
+joystick), **FX** sound (a key a sound, 16 a page; knobs page, envelope, reverb, delay), **EDIT** mode
+(keys 1 to 11 the play style: PLAY, STRUM, LEAD, DRONE, ARP, REPEAT, SEQ, DRUM, LOOPS, HIRO, EAR; knobs
+strum, arp, rate, kit), **GLO** mix (keys 1 to 4 mute the layers, 7 the metronome, 16 tap tempo; knobs the
+levels; tapped: the MIX screen), **SAVE** presets (keys 1 to 4 load P1 to P4, 5 to 8 save them). PRESETS
+picks the sound from a list, ENV and LFO open theirs, KNOB 1 to 4 are filter, resonance, attack and
+release with the value shown as you turn (KNOB 4 sets an effect's amount on its row in the sound menu);
+tempo is on the mode menu and EDIT tapped three times. REC on a layer that already plays arms the next
+empty one. Your settings come back after power-off. HOME held gives you Felucca's full synth underneath; hold HOME and press SAVE to come back to the chord UI.
 
 | | | |
 |---|---|---|
@@ -37,6 +42,7 @@ settings come back after power-off. HOME held gives you Felucca's full synth und
 | ![key menu](screenshots/menu_key.png) | ![sound menu](screenshots/menu_sound_amount.png) | ![mode menu](screenshots/menu_mode.png) |
 | ![looper](screenshots/menu_looper.png) | ![sequencer](screenshots/mode_sequencer.png) | ![drum loop recording](screenshots/mode_drumloop_rec.png) |
 | ![drums](screenshots/mode_drum.png) | ![at rest: the key legend](screenshots/home_idle.png) | ![chord hiro](screenshots/mode_hiro.png) |
+| ![ALGORITHM: the four layers](screenshots/pick_layers.png) | ![FX held: a sound on each key](screenshots/layer_sound.png) | ![EDIT held: the play styles](screenshots/layer_mode.png) |
 
 ![controls](screenshots/controls.png)
 

@@ -50,7 +50,7 @@ static int test_boot_and_menus(void)
                  hui.screen == HU_SOUND && (press(B_EDIT), hui.screen == HU_MODE) && (press(B_SAVE), hui.screen == HU_PRESET) &&
                  (press(B_HOME), hui.screen == HU_HOME));
     press(B_GLO);
-    bad += check("GLO: the SOUND menu too (the settings live there)", hui.screen == HU_SOUND);
+    bad += check("GLO: the MIX screen", hui.screen == HU_MIX);
     press(B_HOME);
     return bad;
 }
@@ -188,9 +188,11 @@ static int test_mode_menu_knobs(void)
     bad += check("RANDOMIZE PATTERN: a message", msg_is2("RANDOMIZED PATTERN"));
     press(B_HOME);
     turn(EN_ALGO, 1);
-    bad += check("ALGORITHM on HOME: the next play mode", hc.t[0].play == HP_DRONE);
+    bad += check("ALGORITHM on HOME: layer 2 selected, the layers' list shown, layer 1's style kept",
+                 song.sel == 1u && hui.screen == HU_PICK && hui.pick_kind == PK_LAYER && hc.t[0].play == HP_LEAD);
     turn(EN_ALGO, -2);
-    bad += check("  back two: STRUM", hc.t[0].play == HP_STRUM);
+    bad += check("  back two: layer 1 (the first)", song.sel == 0u);
+    fm1_ms += 1600; frame();
     turn(EN_PRESET, 1);
     bad += check("PRESETS knob: the next sound (TRIANGLE)", hc.t[0].sound == 2u && t->eng_req == ENGI_HC);
     turn(EN_PRESET, -1);
@@ -225,8 +227,8 @@ static int test_mode_menu_knobs(void)
     bad += check("  SELECT moves it too (the next sound)", hc.t[0].sound == 3u);
     fm1_ms += 1600; frame();
     bad += check("  gone 1.5 s after the last turn", hui.screen == HU_HOME);
-    turn(EN_ALGO, 1);
-    bad += check("ALGORITHM knob: the mode list", hui.screen == HU_PICK && hui.pick_kind == PK_MODE);
+    turn(EN_ALGO, 1); turn(EN_ALGO, -1);
+    bad += check("ALGORITHM knob: the layers' list", hui.screen == HU_PICK && hui.pick_kind == PK_LAYER && song.sel == 0u);
     press(B_OCTUP);
     bad += check("  a button closes it and acts as on HOME (the octave)", hui.screen == HU_HOME && song.octave == -1);
     press(B_OCTDN); turn(EN_PRESET, -2);
@@ -419,7 +421,7 @@ static int test_looper(void)
                  val_is(HU_LOOP, RL_L1, "OFF LIVE") && val_is(HU_LOOP, RL_L2, "OFF") && val_is(HU_LOOP, RL_BARS, "FREE"));
     press(B_HOME);
     press(B_REC);
-    bad += check("REC: layer 1 ARMED", hcl.l[0].state == HLS_ARMED && msg_is2("ARMED"));
+    bad += check("REC: layer 1 ARMED", hcl.l[0].state == HLS_ARMED && msg_is2("LAYER 1 ARMED"));
     press(B_REC);
     bad += check("REC again: recording (free length), the transport runs", hcl.l[0].state == HLS_REC && hcl.playing);
     key_down(0);                                       /* C for a beat */
@@ -431,9 +433,10 @@ static int test_looper(void)
     key_up(2);
     run_ms2(480);                                      /* ~2 s: 4 beats */
     press(B_REC);
-    bad += check("REC: the layer plays, the loop is 4 beats (rounded), the live instrument moved to layer 2",
-                 hcl.l[0].state == HLS_PLAY && hcl.len == 4u * q && song.sel == 1u && hc.t[1].sound == hc.t[0].sound &&
-                 trk[1].p[P_CHRD] == CH_HI && hcl.l[0].n >= 12u);
+    frame();
+    bad += check("REC: the layer plays, the loop is 4 beats (rounded), layer 1 stays selected",
+                 hcl.l[0].state == HLS_PLAY && hcl.len == 4u * q && song.sel == 0u && hcl.l[0].n >= 12u &&
+                 msg_is2("LAYER 1 PLAYS"));
     run_ms2(2100);                                     /* a loop round: layer 1 replays C then Dm */
     bad += check("  the loop replays: notes sound on part 1 during its round", gated_on(0) > 0u || hcl.l[0].play_i > 0u);
     {   /* over one loop, the C and the Dm are heard on part 1 at their times */
@@ -445,14 +448,16 @@ static int test_looper(void)
         }
         bad += check("  .. the C and the Dm both come round", seen_c && seen_d);
     }
-    press(B_REC); press(B_REC);                        /* layer 2: ARMED, then it waits for the loop's start */
-    bad += check("layer 2: ARMED waits for the loop's start", hcl.l[1].state == HLS_ARMED);
+    press(B_REC); press(B_REC);                        /* REC on a playing layer: the next empty one, ARMED; it
+                                                          * waits for the loop's start */
+    bad += check("REC on layer 1 (playing): layer 2 selected and ARMED, waiting for the loop's start; layer 1 plays on",
+                 song.sel == 1u && hcl.l[1].state == HLS_ARMED && hcl.l[0].state == HLS_PLAY && trk[1].p[P_CHRD] == CH_HI);
     run_ms2(2100);
     bad += check("  .. and records from it", hcl.l[1].state == HLS_REC || hcl.l[1].state == HLS_PLAY);
     key_down(7); run_ms2(300); key_up(7);            /* a G on layer 2 */
     run_ms2(2000);
-    bad += check("  .. one loop later it plays, with the G; the live instrument is layer 3", hcl.l[1].state == HLS_PLAY &&
-                 hcl.l[1].n >= 6u && song.sel == 2u);
+    bad += check("  .. one loop later it plays, with the G; layer 2 stays selected", hcl.l[1].state == HLS_PLAY &&
+                 hcl.l[1].n >= 6u && song.sel == 1u);
     press(B_PLAY);
     bad += check("PLAY: paused, nothing sounds", !hcl.playing && msg_is2("PAUSED"));
     run_ms2(200);
@@ -461,8 +466,8 @@ static int test_looper(void)
     bad += check("PLAY again: running", hcl.playing);
     press(B_SEQ);
     turn(EN_SELECT, 0);
-    bad += check("the LOOPER screen: layers PLAY PLAY OFF LIVE OFF", val_is(HU_LOOP, RL_L1, "PLAY") && val_is(HU_LOOP, RL_L2, "PLAY") &&
-                 val_is(HU_LOOP, RL_L3, "OFF LIVE"));
+    bad += check("the LOOPER screen: layers PLAY PLAY OFF OFF", val_is(HU_LOOP, RL_L1, "PLAY") && val_is(HU_LOOP, RL_L2, "PLAY") &&
+                 val_is(HU_LOOP, RL_L3, "OFF") && val_is(HU_LOOP, RL_L4, "OFF"));
     hui.sel[HU_LOOP] = RL_L2; press(B_OCTDN);
     bad += check("OCT- on layer 2: cleared", hcl.l[1].state == HLS_OFF && hcl.l[1].n == 0u);
     hui.sel[HU_LOOP] = RL_CLEAR; press(B_OCTUP);
@@ -470,11 +475,11 @@ static int test_looper(void)
     hui.sel[HU_LOOP] = RL_BARS; press(B_OCTUP); press(B_OCTUP);
     bad += check("BARS: 2", hcl.bars == 2u && val_is(HU_LOOP, RL_BARS, "2"));
     press(B_HOME);
-    hcl.sel = 0;
+    track_select(0);
     press(B_REC); press(B_REC);
     bad += check("a fixed length: REC records 2 bars at once", hcl.l[0].state == HLS_REC && hcl.len == 8u * q);
     run_ms2(4100);
-    bad += check("  .. and plays by itself after them", hcl.l[0].state == HLS_PLAY && song.sel == 1u);
+    bad += check("  .. and plays by itself after them", hcl.l[0].state == HLS_PLAY && song.sel == 0u);
     hold(B_REC);
     bad += check("REC held on the live layer (2, empty): nothing to clear but no harm; everything cleared when nothing plays",
                  hcl.l[0].state == HLS_PLAY || hcl.len == 0u);
@@ -531,8 +536,8 @@ static int test_seq_drums_mixer(void)
     bad += check("leaving SEQUENCER while it runs: the looper records it (2 bars for 8 steps)", hcs.bounce && hcl.l[0].state == HLS_REC &&
                  hcl.len == 8u * q);
     run_ms2(4200);
-    bad += check("  .. two bars later layer 1 plays the sequence, the sequencer is done, the live instrument is layer 2",
-                 hcl.l[0].state == HLS_PLAY && !hcs.bounce && !hcs.running && song.sel == 1u && hcl.l[0].n >= 10u);
+    bad += check("  .. two bars later layer 1 plays the sequence, the sequencer is done, layer 1 still selected",
+                 hcl.l[0].state == HLS_PLAY && !hcs.bounce && !hcs.running && song.sel == 0u && hcl.l[0].n >= 10u);
     hcl_clear_all();
     track_select(0);
     /* the drums */
@@ -724,8 +729,9 @@ static int test_drums_under_chords(void)
     run_ms2(2200);
     if (hcl.l[0].state == HLS_REC) press(B_REC);       /* (a free first layer: closed by hand) */
     run_ms2(100);
-    bad += check("DRUM LOOP into the looper: layer 1 plays, the live instrument moved on",
-                 hcl.l[0].state == HLS_PLAY && song.sel == 1u);
+    bad += check("DRUM LOOP into the looper: layer 1 plays, still selected", hcl.l[0].state == HLS_PLAY && song.sel == 0u);
+    turn(EN_ALGO, 1);                                  /* layer 2 for the chords */
+    bad += check("  ALGORITHM: layer 2", song.sel == 1u);
     hui_mode_set(TSEL, HP_PLAY);
     run_ms2(50);                                       /* (the mode change's release of the track lands in a block) */
     bad += check("  PLAY mode on the new layer: the chord sound is back (not DRUM)", TSEL->eng_req != ENGI_DRUM && hc.t[1].play == HP_PLAY);
@@ -793,11 +799,110 @@ static int test_live_persist(void)
     return bad;
 }
 
+
+/* the held layers (SCL FX EDIT GLO SAVE), ALGORITHM's layers, the MIX screen */
+static void hl_down_btn(uint32_t b) { fm1_in.buttons |= 1u << panel.btn[b]; host_pressed |= 1u << panel.btn[b]; hframes(1); }
+static void hl_up_btn(uint32_t b) { fm1_in.buttons &= ~(1u << panel.btn[b]); hframes(1); }
+static void hl_tap_key(uint32_t k) { key_down(k); hframes(1); key_up(k); hframes(1); }
+static int test_layers(void)
+{
+    int bad = 0;
+    hui_power_on();
+    stop_transport();
+    hl_down_btn(B_FX);
+    bad += check("FX down: SOUND armed, no menu, no map yet", hui.ly == HL_SOUND && !hui.ly_open && hui.screen == HU_HOME);
+    key_down(white(4));
+    hframes(1);
+    bad += check("  + white key 5: sound 5 (E.PIANO), the map open, the key silent", hc.t[0].sound == 4u && hui.ly_open &&
+                 gates() == 0u);
+    key_up(white(4)); hframes(1);
+    turn(EN_K1, 1);
+    hl_tap_key(white(0));
+    bad += check("  KNOB 1: the next page, its first key the 17th sound", hui.ly_page == 1u && hc.t[0].sound == 16u);
+    hl_up_btn(B_FX);
+    bad += check("  let go: the map closes, no SOUND menu (it was used)", !hui.ly && !hui.ly_open && hui.screen == HU_HOME);
+    key_down(white(0)); hframes(1);
+    bad += check("  the keys play again", gates() > 0u);
+    key_up(white(0)); hframes(30);
+    press(B_FX);
+    bad += check("FX tapped: the SOUND menu, as before", hui.screen == HU_SOUND);
+    press(B_HOME);
+    hl_down_btn(B_EDIT);
+    hl_tap_key(white(1));
+    {
+        uint32_t sp = hc.t[0].strum;
+        turn(EN_K1, 1);
+        bad += check("EDIT held + white key 2: STRUM; KNOB 1 its speed", hc.t[0].play == HP_STRUM && hc.t[0].strum == (sp + 1u) % 3u);
+    }
+    hl_tap_key(white(7));
+    bad += check("  + white key 8: DRUM (the drum engine)", hc.t[0].play == HP_DRUM && trk[0].eng_req == ENGI_DRUM);
+    hl_tap_key(white(0));
+    hl_up_btn(B_EDIT);
+    bad += check("  + white key 1: PLAY again, the sound back; let go: HOME", hc.t[0].play == HP_PLAY &&
+                 trk[0].eng_req == HC_SOUNDS[hc.t[0].sound].engine && hui.screen == HU_HOME);
+    hl_down_btn(B_SCL);
+    hl_tap_key(key_at(1, 0));                             /* F#3 */
+    turn(EN_K1, 1);
+    hl_up_btn(B_SCL);
+    bad += check("SCL held + F#3: the key F#; KNOB 1: MINOR", trk[0].p[P_ROOT] == 6 && trk[3].p[P_ROOT] == 6 &&
+                 hui_scale_get() == 1u);
+    hui_key_set(0); hui_scale_set(0);
+    hl_down_btn(B_GLO);
+    hl_tap_key(white(1));
+    turn(EN_K3, -2);
+    hl_up_btn(B_GLO);
+    bad += check("GLO held + white key 2: layer 2 muted; KNOB 3: layer 3's level down", trk[1].p[P_MUTE] && trk[2].p[P_LEVEL] < 100);
+    hl_down_btn(B_GLO); hl_tap_key(white(1)); hl_up_btn(B_GLO);
+    bad += check("  again: unmuted", !trk[1].p[P_MUTE]);
+    press(B_GLO);
+    bad += check("GLO tapped: the MIX screen", hui.screen == HU_MIX);
+    {
+        int16_t lv = trk[0].p[P_LEVEL];
+        press(B_OCTDN);
+        bad += check("  OCT-: the selected layer's level down", trk[0].p[P_LEVEL] == lv - 8);
+    }
+    press(B_HOME);
+    hl_down_btn(B_SAVE);
+    hl_tap_key(white(4));
+    hl_up_btn(B_SAVE);
+    bad += check("SAVE held + white key 5: saved to P1, no PRESETS screen", hui.preset_used[0] && hui.screen == HU_HOME);
+    hc.t[0].sound = 9;
+    hl_down_btn(B_SAVE); hl_tap_key(white(0)); hl_up_btn(B_SAVE);
+    bad += check("  + white key 1: P1 loaded back", hc.t[0].sound == 16u);
+    hl_down_btn(B_FX);
+    hframes(20);                                         /* held alone past HL_OPEN_MS: the map, a peek */
+    bad += check("FX held alone: the map shows", hui.ly_open);
+    hframes(30);
+    hl_up_btn(B_FX);
+    bad += check("  let go late: no tap, no menu", hui.screen == HU_HOME);
+    turn(EN_ALGO, 1);
+    bad += check("ALGORITHM: layer 2, the layers' list", song.sel == 1u && hui.pick_kind == PK_LAYER && hui.screen == HU_PICK);
+    hl_down_btn(B_EDIT); hl_tap_key(white(2)); hl_up_btn(B_EDIT);
+    bad += check("  EDIT held on layer 2: LEAD on layer 2 only", hc.t[1].play == HP_LEAD && hc.t[0].play == HP_PLAY);
+    turn(EN_ALGO, 5);
+    bad += check("  ALGORITHM past the end: layer 4", song.sel == 3u);
+    turn(EN_ALGO, -5);
+    fm1_ms += 1600; frame();
+    {   /* a MIXER play style saved by the earlier firmware comes back as PLAY */
+        hc.t[2].play = HP_MIXER;
+        hc_preset_pack(hc_live);
+        hui_live_restore();
+        bad += check("a saved MIXER style: PLAY now", hc.t[2].play == HP_PLAY);
+    }
+    hui.sel[HU_MODE] = RM_MODE;
+    press(B_EDIT); hframes(40);
+    for (uint32_t i = 0; i < HU_NSTYLES + 1u; i++)
+        press(B_OCTUP);
+    bad += check("the MODE menu's MODE row: the 11 styles round, no MIXER", hc.t[0].play == HP_STRUM);
+    press(B_HOME);
+    return bad;
+}
+
 int main(void)
 {
     int bad = test_slash_first_thing() + test_boot_and_menus() + test_key_menu() + test_sound_menu() + test_mode_menu_knobs() + test_presets() +
               test_draw_and_handover() + test_looper() + test_seq_drums_mixer() + test_games() + test_live_persist() +
-              test_fx_amount() + test_drums_under_chords() + test_footer_fits();
+              test_fx_amount() + test_drums_under_chords() + test_layers() + test_footer_fits();
     printf("%s\n", bad ? "HUI TEST FAILED" : "chord machine ui test passed");
     return bad != 0;
 }
