@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
-"""Load WAV files into a Felucca user sample slot (USR1..USR3) over USB-MIDI.
+"""Load WAV files into a user sample slot (USR1, USR2; fm1-chord keeps the presets' loops in Felucca's USR3) over USB-MIDI.
 
   fm1_sample_upload.py info
   fm1_sample_upload.py load SLOT NAME file.wav[:ROOT[:LO-HI]] ...   (SLOT 1..3)
@@ -101,8 +101,8 @@ def main():
             print(f"{sys.argv[2]}: {len(data)} B ADPCM, {hdr[6]} zones")
             return
     if cmd != "info":
-        if len(sys.argv) < 3 or sys.argv[2] not in ("1", "2", "3"):
-            sys.exit("SLOT is 1, 2 or 3")
+        if len(sys.argv) < 3 or sys.argv[2] not in ("1", "2"):
+            sys.exit("SLOT is 1 or 2")
         slot = int(sys.argv[2]) - 1
     link = Link()
     if cmd == "info":

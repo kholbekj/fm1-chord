@@ -105,9 +105,15 @@ int main(void)
                      st_sector(OBJ_UPRESET0, 0) >= 0xDC000 && st_sector(OBJ_UPRESET0 + 1, 1) + 4096 <= 0xE0000);
     /* the FM6 patch bank: the two free sectors, 0x9F000 (after the projects) and 0xFE000 (after the settings) */
     bad += check("FM6 bank in the free sectors 0x9F000 / 0xFE000",
-                 OBJ_FM6BANK == OBJ_COUNT - 1 && st_sector(OBJ_FM6BANK, 0) == 0x9F000u &&
+                 OBJ_FM6BANK == OBJ_LOOP0 - 1 && st_sector(OBJ_FM6BANK, 0) == 0x9F000u &&
                      st_sector(OBJ_PROJECT0 + 3, 1) + 4096 == 0x9F000u && st_sector(OBJ_FM6BANK, 1) == 0xFE000u &&
                      st_sector(OBJ_SETTINGS, 1) + 4096 == 0xFE000u);
+    /* fm1-chord: the presets' loops in Felucca's third sample slot (0xC8000..), clear of the two kept slots and the
+     * user preset banks */
+    bad += check("the presets' loops: 0xC8000..0xCFFFF, after the two sample slots, before the user presets",
+                 OBJ_COUNT == OBJ_LOOP0 + 4 && st_sector(OBJ_LOOP0, 0) == 0xC8000u &&
+                     st_sector(OBJ_LOOP0, 0) >= 0xA0000u + 2u * 0x14000u && st_sector(OBJ_LOOP0 + 3, 1) + 4096 == 0xD0000u &&
+                     st_sector(OBJ_LOOP0 + 3, 1) + 4096 <= st_sector(OBJ_UPRESET0, 0));
     {
         static uint8_t bank[3472], back[3472];
         uint32_t i;

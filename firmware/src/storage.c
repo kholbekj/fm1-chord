@@ -18,9 +18,10 @@
 #define ST_PAYLOAD_MAX (ST_SECTOR - ST_PAYLOAD_OFF)
 
 /* flash map (FL_DATA 0x97000..0xDFFFF, FL_GLOB 0xFC000..): settings 0xFC000, projects 0x97000..0x9EFFF,
- * user sample slots 0xA0000..0xDBFFF (eng_sample.c), user preset banks 0xDC000..0xDFFFF (upreset.c), the FM6
- * patch bank (fm6_bank.c): copy A 0x9F000, copy B 0xFE000 (the two free sectors) */
-enum { OBJ_SETTINGS, OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 4, OBJ_FM6BANK = OBJ_UPRESET0 + 2, OBJ_COUNT };
+ * user sample slots 0xA0000..0xC7FFF (eng_sample.c: two of 80 KiB), the presets' loops 0xC8000..0xCFFFF (fm1-chord,
+ * in Felucca's third sample slot, as JIANT keeps its songs in the slots; 0xD0000..0xDBFFF free), user preset banks
+ * 0xDC000..0xDFFFF (upreset.c), the FM6 patch bank (fm6_bank.c): copy A 0x9F000, copy B 0xFE000 */
+enum { OBJ_SETTINGS, OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 4, OBJ_FM6BANK = OBJ_UPRESET0 + 2, OBJ_LOOP0, OBJ_COUNT = OBJ_LOOP0 + 4 };
 
 typedef struct {
     uint32_t magic;
@@ -55,6 +56,8 @@ static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy 
         return 0xFC000u + copy * ST_SECTOR;
     if (obj == OBJ_FM6BANK)
         return copy ? 0xFE000u : 0x9F000u;
+    if (obj >= OBJ_LOOP0)                               /* fm1-chord: P1..P4's loops (hui.c) */
+        return 0xC8000u + (obj - OBJ_LOOP0) * 2u * ST_SECTOR + copy * ST_SECTOR;
     if (obj >= OBJ_UPRESET0)
         return 0xDC000u + (obj - OBJ_UPRESET0) * 2u * ST_SECTOR + copy * ST_SECTOR;
     return 0x97000u + (obj - OBJ_PROJECT0) * 2u * ST_SECTOR + copy * ST_SECTOR;

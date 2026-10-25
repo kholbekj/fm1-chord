@@ -355,6 +355,17 @@ static void hui_preset_save(uint32_t slot)
         hui_say("SAVE FAILED");
         return;
     }
+#if FELUCCA_FLASH
+    if (flash_ok) {                                      /* the loop too, as it plays (none: an empty record, so
+                                                          * the slot brings no older loop back) */
+        uint8_t lp[HCL_PACK_BYTES];
+        hcl_pack(lp);
+        if (st_save(OBJ_LOOP0 + (slot & 3u), lp, sizeof lp) != 0) {
+            hui_say("LOOP NOT SAVED");
+            return;
+        }
+    }
+#endif
     settings_save();
     hui_preset_scan();
     b[7] = (char)('1' + (slot & 3u));
@@ -363,7 +374,7 @@ static void hui_preset_save(uint32_t slot)
 }
 static void hui_preset_load(uint32_t slot)
 {
-    char b[16] = "PRESET P";
+    char b[20] = "PRESET P";
     uint32_t i;
     if (!project_used(slot & 3u)) {
         hui_say("EMPTY");
@@ -378,6 +389,14 @@ static void hui_preset_load(uint32_t slot)
         hc_play_set(&trk[i], hc.t[i].play == HP_MIXER ? HP_PLAY : hc.t[i].play);
     b[8] = (char)('1' + (slot & 3u));
     b[9] = 0;
+#if FELUCCA_FLASH
+    if (flash_ok) {                                      /* its loop, if it has one, in place of the one playing
+                                                          * (paused: PLAY); without one the loop stays */
+        uint8_t lp[HCL_PACK_BYTES];
+        if (st_load(OBJ_LOOP0 + (slot & 3u), lp, sizeof lp) == (int)sizeof lp && hcl_unpack(lp))
+            str_cpy(b + 9, " + LOOP", sizeof b - 9u);
+    }
+#endif
     hui_say(b);
 }
 

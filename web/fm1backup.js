@@ -5,6 +5,7 @@ export const BACKUP_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 32, 33, 34];   // 8: the F
 const BACKUP_IDS_V1 = BACKUP_IDS.filter((id) => id !== 8);              // firmware before FM6, and its archives
 const idsOf = (n) => (n === BACKUP_IDS.length ? BACKUP_IDS : n === BACKUP_IDS_V1.length ? BACKUP_IDS_V1 : null);
 export const BACKUP_CMD = { LIST: 65, GET: 66, PUT: 67 };
+export const SAMPLE_SLOTS = 2;   // fm1-chord: USR1, USR2 (Felucca's USR3 flash holds the presets' loops; its id 34 lists empty)
 const BACKUP_CHUNK = 256;
 export const bkU32 = (n) => Array.from({ length: 5 }, (_, i) => (n >>> (i * 7)) & (i === 4 ? 15 : 127));
 export const bkR32 = (a, off = 0) => {
@@ -114,6 +115,10 @@ export async function restoreBackup(request, file, onProgress = () => {}) {
   for (const o of [...archive.objects.slice(2), archive.objects[1], archive.objects[0]]) {
     if (o.id >= 32) {
       const slot = o.id - 32;
+      if (slot >= SAMPLE_SLOTS) {                // fm1-chord: the third slot holds the presets' loops; its sample stays out
+        if (o.size) console.warn(`backup: USR${slot + 1} (${o.size} B) not restored: this firmware has ${SAMPLE_SLOTS} sample slots`);
+        continue;
+      }
       const check = (a) => { if (a[0] !== slot) throw new Error("Unexpected sample reply"); bkCheck(a.at(-1)); };
       if (!o.size) check(await ask([14, [slot]]));
       else {
