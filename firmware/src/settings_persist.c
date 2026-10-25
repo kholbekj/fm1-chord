@@ -8,6 +8,9 @@
 /* PER5 (fm1-chord): hcp, the four chord machine presets' own state (hui.c hc_preset_pack: the chord settings, the
  * key inversions and locks), opaque bytes here; a PER4 record (upstream Felucca) imports with them empty */
 #define HC_PRESET_BYTES 256u
+#ifndef HCL_PACK_BYTES                                   /* (a host test without the looper: its packed size) */
+#define HCL_PACK_BYTES (20u + 4u * 160u * 3u)
+#endif
 typedef struct {
     uint32_t magic, palette, lowcut, zoom;
     panel_t panel;
@@ -15,23 +18,37 @@ typedef struct {
     struct { uint8_t factory[16][32]; uint32_t user, filter; } favorites;
     uint8_t hcp[4][HC_PRESET_BYTES];
     uint8_t hcl[HC_PRESET_BYTES];                /* PER6: the live chord machine state, back after power-off (hui.c) */
+    uint8_t hlp[HCL_PACK_BYTES];                 /* PER7: the loop as it played, back after power-off (hclooper.c hcl_pack) */
 } persist_t;
-#define PERSIST_MAGIC 0x50455236u
+#define PERSIST_MAGIC 0x50455237u
+#define PERSIST_MAGIC_V6 0x50455236u
 #define PERSIST_MAGIC_V5 0x50455235u
 #define PERSIST_MAGIC_V4 0x50455234u
 static uint8_t hc_presets[4][HC_PRESET_BYTES];   /* the presets as last imported / saved (hui.c reads and writes) */
 static uint8_t hc_live[HC_PRESET_BYTES];         /* the live state as last imported / saved (hui.c hui_live_poll) */
+/* the loop: packed straight into the record when it is written (no copy of it in RAM: RAM is full), unpacked from it
+ * at power-on (project.c persist_boot); hui.c hui_live_poll asks for a save when it changes */
+static void settings_loop_export(persist_t *p)
+{
+#ifdef HCL_PACK_HEAD
+    hcl_pack(p->hlp);
+#else
+    (void)p;
+#endif
+}
 
 /* Normalize in place; 1 = current, 2 = migrated, 0 = invalid. */
 static int settings_import(persist_t *p, int n)
 {
     int current = n == (int)sizeof *p && p->magic == PERSIST_MAGIC;
-    int old5 = n == (int)(sizeof *p - sizeof p->hcl) && p->magic == PERSIST_MAGIC_V5;
-    int old4 = n == (int)(sizeof *p - sizeof p->hcl - sizeof p->hcp) && p->magic == PERSIST_MAGIC_V4;
-    int old3 = n == (int)(sizeof *p - sizeof p->hcl - sizeof p->hcp - sizeof p->favorites) && p->magic == 0x50455233u;
-    int old2 = n == (int)(sizeof *p - sizeof p->hcl - sizeof p->hcp - sizeof p->favorites - sizeof p->bold) && p->magic == 0x50455232u;
+    int old6 = n == (int)(sizeof *p - sizeof p->hlp) && p->magic == PERSIST_MAGIC_V6;
+    int old5 = n == (int)(sizeof *p - sizeof p->hlp - sizeof p->hcl) && p->magic == PERSIST_MAGIC_V5;
+    int old4 = n == (int)(sizeof *p - sizeof p->hlp - sizeof p->hcl - sizeof p->hcp) && p->magic == PERSIST_MAGIC_V4;
+    int old3 = n == (int)(sizeof *p - sizeof p->hlp - sizeof p->hcl - sizeof p->hcp - sizeof p->favorites) && p->magic == 0x50455233u;
+    int old2 = n == (int)(sizeof *p - sizeof p->hlp - sizeof p->hcl - sizeof p->hcp - sizeof p->favorites - sizeof p->bold) &&
+               p->magic == 0x50455232u;
     int old1 = n == (int)(8u + sizeof(panel_t)) && p->magic == 0x50455231u;
-    if (!(current || old5 || old4 || old3 || old2 || old1)) return 0;
+    if (!(current || old6 || old5 || old4 || old3 || old2 || old1)) return 0;
     if (old1) {
         panel_t old;
         memcpy(&old, (uint8_t *)p + 8, sizeof old);
@@ -40,8 +57,9 @@ static int settings_import(persist_t *p, int n)
     }
     if (old1 || old2) p->bold = 0;
     if (old1 || old2 || old3) memset(&p->favorites, 0, sizeof p->favorites);
-    if (!(current || old5)) memset(p->hcp, 0, sizeof p->hcp);
-    if (!current) memset(p->hcl, 0, sizeof p->hcl);
+    if (!(current || old6 || old5)) memset(p->hcp, 0, sizeof p->hcp);
+    if (!(current || old6)) memset(p->hcl, 0, sizeof p->hcl);
+    if (!current) memset(p->hlp, 0, sizeof p->hlp);
     memcpy(hc_presets, p->hcp, sizeof hc_presets);
     memcpy(hc_live, p->hcl, sizeof hc_live);
     p->magic = PERSIST_MAGIC;
@@ -84,4 +102,5 @@ static void settings_export(persist_t *p)
 #endif
     memcpy(p->hcp, hc_presets, sizeof p->hcp);
     memcpy(p->hcl, hc_live, sizeof p->hcl);
+    settings_loop_export(p);
 }

@@ -162,6 +162,78 @@ static void hcl_play_press(void)
             hcl_layer_silence(i);
 }
 
+/* The loop packed for flash (the settings record's hlp, settings_persist.c): "HCL1", the length in samples, BARS, the
+ * metronome, each layer's event count, then the layers' events, 3 bytes each: the time in ms (16 bits, little
+ * endian) and the note | on << 7. Only layers that play are kept (one recording or armed is not a take yet).
+ * Empty (no magic) when nothing plays, or the loop is longer than the 16 bits of ms hold (65 s). */
+#define HCL_PACK_HEAD 20u
+#define HCL_PACK_BYTES (HCL_PACK_HEAD + HCL_LAYERS * HCL_EVENTS * 3u)
+#define HCL_PACK_MAGIC 0x314C4348u                       /* "HCL1" */
+static void hcl_pack(uint8_t *b)
+{
+    uint32_t i, j, k = HCL_PACK_HEAD;
+    memset(b, 0, HCL_PACK_BYTES);
+    if (!hcl.len || !hcl_count(HLS_PLAY) || (uint64_t)hcl.len * 1000u / FS > 65535u)
+        return;
+    memcpy(b, &(uint32_t){HCL_PACK_MAGIC}, 4);
+    memcpy(b + 4, &hcl.len, 4);
+    b[8] = hcl.bars;
+    b[9] = hcl.metro;
+    for (i = 0; i < HCL_LAYERS; i++) {
+        uint16_t n = hcl.l[i].state == HLS_PLAY ? hcl.l[i].n : 0u;
+        memcpy(b + 10u + 2u * i, &n, 2);
+        for (j = 0; j < n; j++) {
+            hcl_ev_t e = hcl_ev[i][j];
+            uint32_t ms = (uint32_t)(((uint64_t)HCL_AT(e) * 1000u + FS / 2u) / FS);
+            if (ms > 65535u)
+                ms = 65535u;
+            b[k++] = (uint8_t)ms;
+            b[k++] = (uint8_t)(ms >> 8);
+            b[k++] = (uint8_t)(HCL_NOTE(e) | (HCL_ON(e) << 7));
+        }
+    }
+}
+static uint8_t hcl_boot_loop;                            /* 1: a loop came back at power-on (project.c persist_boot) */
+/* a signature of what hcl_pack keeps (the layers that play, their events, the length): it changed, a save is due */
+static uint32_t hcl_sig(void)
+{
+    uint32_t h = 2166136261u ^ hcl.len, i, j;
+    for (i = 0; i < HCL_LAYERS; i++) {
+        uint32_t n = hcl.l[i].state == HLS_PLAY ? hcl.l[i].n : 0u;
+        h = (h ^ (n + i * 977u)) * 16777619u;
+        for (j = 0; j < n; j++)
+            h = (h ^ hcl_ev[i][j]) * 16777619u;
+    }
+    return h ^ hcl.bars * 31u ^ hcl.metro * 7u;
+}
+/* back from flash: the layers that were kept play again, the transport paused (PLAY starts it); 1 = a loop came back */
+static int hcl_unpack(const uint8_t *b)
+{
+    uint32_t m, i, j, k = HCL_PACK_HEAD, len;
+    memcpy(&m, b, 4);
+    memcpy(&len, b + 4, 4);
+    if (m != HCL_PACK_MAGIC || !len)
+        return 0;
+    hcl_clear_all();
+    hcl.len = len;
+    hcl.bars = (uint8_t)(b[8] <= 8u ? b[8] : 0u);
+    hcl.metro = b[9] & 1u;
+    for (i = 0; i < HCL_LAYERS; i++) {
+        uint16_t n;
+        memcpy(&n, b + 10u + 2u * i, 2);
+        if (n > HCL_EVENTS || k + n * 3u > HCL_PACK_BYTES)
+            n = 0;
+        for (j = 0; j < n; j++, k += 3u) {
+            uint32_t ms = b[k] | (uint32_t)b[k + 1u] << 8;
+            hcl_ev[i][j] = HCL_EV((uint32_t)((uint64_t)ms * FS / 1000u), b[k + 2u] & 0x7Fu, b[k + 2u] >> 7);
+        }
+        hcl.l[i].n = n;
+        hcl.l[i].state = n ? HLS_PLAY : HLS_OFF;
+        hcl.any |= n != 0u;
+    }
+    return hcl.any;
+}
+
 /* the replay of layer ti over [pos, pos + n) */
 static void hcl_replay(uint32_t ti, uint32_t pos, uint32_t n)
 {

@@ -898,11 +898,77 @@ static int test_layers(void)
     return bad;
 }
 
+/* the loop kept across power-off (the settings record, PER7) and REC held to 2 s: everything cleared */
+static int test_loop_kept(void)
+{
+    int bad = 0;
+    uint32_t n0, n1;
+    hui_power_on();
+    hcl_clear_all();
+    hcl_boot_loop = 0;
+    press(B_REC); press(B_REC);                          /* layer 1: a C and a Dm over 4 beats */
+    key_down(0); run_ms2(500); key_up(0); run_ms2(500);
+    key_down(2); run_ms2(500); key_up(2); run_ms2(480);
+    press(B_REC);
+    turn(EN_ALGO, 1);
+    press(B_REC);                                        /* layer 2: a G, one loop (from the loop's start) */
+    {
+        uint32_t loop_ms = (uint32_t)((uint64_t)hcl.len * 1000u / FS);
+        while (hcl.l[1].state == HLS_ARMED)
+            run_ms2(20);
+        key_down(7); run_ms2(300); key_up(7);
+        run_ms2(loop_ms);
+    }
+    n0 = hcl.l[0].n; n1 = hcl.l[1].n;
+    bad += check("two layers play", hcl.l[0].state == HLS_PLAY && hcl.l[1].state == HLS_PLAY && n0 >= 8u && n1 >= 2u);
+    run_ms2(4000);                                       /* the poll packs it; 3 s on, the settings are saved */
+    {   /* the settings record as written, then "power-off": the loop gone from RAM, back from the record */
+        persist_t p;
+        uint32_t len = hcl.len, at0 = HCL_AT(hcl_ev[0][2]);
+        bad += check("the loop changed: a settings save asked for, then done", !hui_live.dirty && hui_live.loop_sig == hcl_sig());
+        memset(&p, 0, sizeof p);
+        settings_export(&p);
+        bad += check("  the record carries it", *(const uint32_t *)p.hlp == HCL_PACK_MAGIC);
+        hcl_clear_all();
+        bad += check("  it fits the record (one flash sector)", sizeof p <= 4096u - 256u && settings_import(&p, sizeof p) == 1);
+        hcl_boot_loop = (uint8_t)hcl_unpack(p.hlp);      /* (as persist_boot at power-on) */
+        hui_live_restore();
+        bad += check("  power on: both layers back, paused, the same length and notes, said",
+                     hcl.l[0].state == HLS_PLAY && hcl.l[1].state == HLS_PLAY && hcl.l[0].n == n0 && hcl.l[1].n == n1 &&
+                     hcl.len == len && !hcl.playing && msg_is2("LOOP BACK: PLAY"));
+        bad += check("  the times kept to the millisecond", (int32_t)(HCL_AT(hcl_ev[0][2]) - at0) < (int32_t)(FS / 1000u) &&
+                     (int32_t)(at0 - HCL_AT(hcl_ev[0][2])) < (int32_t)(FS / 1000u));
+    }
+    hui_mode_set(&trk[1], HP_DRUMLOOP);                  /* (layer 2 on DRUM LOOP: PLAY would run the drum machine) */
+    hcs.dl_running = 0;
+    press(B_PLAY);
+    run_ms2(2100);
+    bad += check("  PLAY, on a DRUM LOOP layer too: the loop plays again first", hcl.playing && hcl.pos != 0u && !hcs.dl_running);
+    hui_mode_set(&trk[1], HP_PLAY);
+    fm1_in.buttons |= 1u << panel.btn[B_REC];
+    host_pressed |= 1u << panel.btn[B_REC];
+    hframes(50);                                         /* 0.8 s: the selected layer (2) */
+    bad += check("REC held 0.8 s: layer 2 cleared, layer 1 plays on, told to hold on", hcl.l[1].state == HLS_OFF &&
+                 hcl.l[0].state == HLS_PLAY && msg_is2("CLEARED. HOLD: ALL"));
+    hframes(90);                                         /* on to 2.2 s: all */
+    fm1_in.buttons &= ~(1u << panel.btn[B_REC]);
+    hframes(2);
+    bad += check("  held on to 2 s: everything cleared, no loop", hcl.l[0].state == HLS_OFF && !hcl.len && msg_is2("ALL CLEARED"));
+    run_ms2(4000);
+    {
+        persist_t p;
+        memset(&p, 0, sizeof p);
+        settings_export(&p);
+        bad += check("  and the record keeps no loop", *(const uint32_t *)p.hlp != HCL_PACK_MAGIC && !hui_live.dirty);
+    }
+    return bad;
+}
+
 int main(void)
 {
     int bad = test_slash_first_thing() + test_boot_and_menus() + test_key_menu() + test_sound_menu() + test_mode_menu_knobs() + test_presets() +
               test_draw_and_handover() + test_looper() + test_seq_drums_mixer() + test_games() + test_live_persist() +
-              test_fx_amount() + test_drums_under_chords() + test_layers() + test_footer_fits();
+              test_fx_amount() + test_drums_under_chords() + test_layers() + test_loop_kept() + test_footer_fits();
     printf("%s\n", bad ? "HUI TEST FAILED" : "chord machine ui test passed");
     return bad != 0;
 }

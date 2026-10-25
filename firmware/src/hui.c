@@ -301,10 +301,12 @@ static int hc_preset_unpack(const uint8_t *b)
  * (key, scale, octave and tempo are Felucca's song and reset, as on the chord machine): packed like a preset
  * into hc_live (settings_persist.c, PER6), saved with the settings 3 s after the last change (one flash
  * erase per edit session, not per knob click), restored at boot (main.c) */
-static struct { uint32_t at_ms, poll_ms; uint8_t dirty; } hui_live;
+static struct { uint32_t at_ms, poll_ms, loop_sig; uint8_t dirty; } hui_live;
 static void hui_live_restore(void)
 {
     uint32_t i;
+    if (hcl_boot_loop)                                   /* the loop as it played, paused: PLAY goes on with it */
+        hui_say("LOOP BACK: PLAY");
     if (!hc_preset_unpack(hc_live))
         return;
     for (i = 0; i < NTRK; i++)
@@ -317,6 +319,15 @@ static void hui_live_poll(void)
         return;
     hui_live.poll_ms = fm1_ms;
     hc_preset_pack(b);
+    if (!hcl_count(HLS_REC) && !hcl_count(HLS_ARMED)) {  /* the loop too, once no take is under way (packed into
+                                                          * the record when it is written: settings_persist.c) */
+        uint32_t sig = hcl_sig();
+        if (sig != hui_live.loop_sig) {
+            hui_live.loop_sig = sig;
+            hui_live.at_ms = fm1_ms;
+            hui_live.dirty = 1;
+        }
+    }
     if (memcmp(b, hc_live, sizeof b)) {
         memcpy(hc_live, b, sizeof b);
         hui_live.at_ms = fm1_ms;
@@ -1114,14 +1125,24 @@ static void hui_input(void)
             hcl.sel = (uint8_t)(hui.sel[HU_LOOP] < HCL_LAYERS ? hui.sel[HU_LOOP] : song.sel);
         if (rec == BT_TAP) {
             hui_rec_tap();
-        } else if (rec == BT_HOLD) {
+        } else if (rec == BT_HOLD) {                     /* held 0.7 s: the selected layer (the last one: all) */
             hcl_clear(hcl.sel);
-            if (!hcl_count(HLS_PLAY) && !hcl_count(HLS_REC))
+            if (!hcl_count(HLS_PLAY) && !hcl_count(HLS_REC)) {
                 hcl_clear_all();
-            hui_say("CLEARED");
+                hui_say("ALL CLEARED");
+            } else {
+                hui_say("CLEARED. HOLD: ALL");
+            }
+        } else if ((hui.rec_t0 & 3u) == 3u && now - (hui.rec_t0 & ~3u) > 2000u * 1000u * FM1_TICKS_PER_US && hcl.len) {
+            hcl_clear_all();                             /* held on to 2 s: every layer, the loop's length */
+            hui_say("ALL CLEARED");
         }
         if (DOWN(B_PLAY)) {
-            if (c->play == HP_HIRO) {                    /* the song starts or stops */
+            if (hcl.len && !hcl.playing && hcl.any) {    /* a loop paused (back from power-off, or PLAY before):
+                                                          * PLAY goes on with it first, whatever the layer's style */
+                hcl_play_press();
+                hui_say("PLAYING");
+            } else if (c->play == HP_HIRO) {                    /* the song starts or stops */
                 if (hcg.running) hcg_hiro_stop(TSEL); else hcg_hiro_start();
                 hui_say(hcg.running ? "GO!" : "STOPPED");
             } else if (c->play == HP_EAR) {              /* a new round */

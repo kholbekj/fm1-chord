@@ -871,8 +871,12 @@ static void persist_boot(void)                    /* before settings_init / pane
     }
     {
         int n = st_load(OBJ_SETTINGS, &p, sizeof p);
-        if (settings_import(&p, n))
+        if (settings_import(&p, n)) {
             persist_saved = p;
+#ifdef HCL_PACK_HEAD
+            hcl_boot_loop = (uint8_t)hcl_unpack(p.hlp);   /* fm1-chord: the loop as it played (hui.c says so) */
+#endif
+        }
     }
     {   /* projects: fill empty RAM slots from flash, so the slot list is right after power-on */
         uint32_t i;

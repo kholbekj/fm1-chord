@@ -174,7 +174,6 @@ static void fm1_main(void)
         ota_boot_cleanup();                             /* staging area left by an update */
 #endif
     settings_init();
-    hui_live_restore();                       /* fm1-chord: the chord settings as left (hui.c) */
     lcd_init();
     lcd_fill(0, 0, 240, 240, T_BG);
     draw_text_box(0, 94, 240, &AF_L, "FELUCCA", T_THEME, 1);
@@ -196,6 +195,8 @@ static void fm1_main(void)
     fm1_adc_init();
     panel_init();
     felucca_init();
+    hui_live_restore();                       /* fm1-chord: the chord settings as left (hui.c); after felucca_init,
+                                               * whose hc_init and track defaults would undo it */
     audio_init();
     usb_start();
 #if FELUCCA_UART

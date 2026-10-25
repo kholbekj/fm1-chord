@@ -191,66 +191,67 @@ int main(void)
     reset();
     memset(&ps, 0, sizeof ps);
     settings_export(&ps);
+    ps.magic = PERSIST_MAGIC_V6;                         /* a backup's settings: the PER6 form, no loop */
     ps.lowcut = 2;                                       /* SPEAKER BASS+ */
     ps.palette = palette_to_stored(6);
-    bad += check("settings with SPEAKER BASS+ restore", put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps)) == 0 &&
+    bad += check("settings with SPEAKER BASS+ restore", put_all(1, &ps, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN)) == 0 &&
                  settings.lowcut == 2u && fx_lowcut == 2u && settings.palette == 6u);
     ps.palette = 13;                                     /* an older backup: its PAPER (old id 13) */
     bad += check("settings of an older backup restore with the palette migrated",
-                 put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps)) == 0 && settings.palette == 6u);
+                 put_all(1, &ps, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN)) == 0 && settings.palette == 6u);
     ps.palette = palette_to_stored(6);
     before = erases;
     ps.lowcut = 3;
     bad += check("settings with an unknown SPEAKER value are refused, nothing written",
-                 put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps)) == 2u && erases == before && settings.lowcut == 2u);
+                 put_all(1, &ps, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN)) == 2u && erases == before && settings.lowcut == 2u);
     ps.lowcut = 0;
     ps.bold = hold_to_stored(0, 3);                      /* HOLD 0.6 s */
     bad += check("settings with HOLD 0.6 s restore",
-                 put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps)) == 0 && HOLD_MS[settings_hold] == 600u);
+                 put_all(1, &ps, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN)) == 0 && HOLD_MS[settings_hold] == 600u);
     ps.bold = 1;                                         /* an older backup (its font weight): HOLD 0.4 s */
     bad += check("settings of an older backup restore with HOLD 0.4 s",
-                 put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps)) == 0 && HOLD_MS[settings_hold] == 400u);
+                 put_all(1, &ps, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN)) == 0 && HOLD_MS[settings_hold] == 400u);
     before = erases;
     ps.bold = HOLD_TAG + 7u;
     bad += check("settings with an unknown HOLD value are refused, nothing written",
-                 put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps)) == 2u && erases == before);
+                 put_all(1, &ps, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN)) == 2u && erases == before);
     ps.bold = 0;
     ps.zoom = LEDS_TAG | LEDS_INV;                       /* LEDS INV */
     bad += check("settings with LEDS INV restore",
-                 put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps)) == 0 && settings_leds == LEDS_INV);
+                 put_all(1, &ps, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN)) == 0 && settings_leds == LEDS_INV);
     ps.zoom = 1;                                         /* an older backup (its large readout): LEDS DIM */
     bad += check("settings of an older backup restore with LEDS DIM",
-                 put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps)) == 0 && settings_leds == LEDS_DIM);
+                 put_all(1, &ps, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN)) == 0 && settings_leds == LEDS_DIM);
     before = erases;
     ps.zoom = LEDS_TAG + 2u;
     bad += check("settings with an unknown LEDS value are refused, nothing written",
-                 put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps)) == 2u && erases == before);
+                 put_all(1, &ps, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN)) == 2u && erases == before);
     ps.zoom = 0;
     bad += check("a wrong CRC is refused before any write",
-                 put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps) ^ 1u) == 2u && erases == before);
+                 put_all(1, &ps, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN) ^ 1u) == 2u && erases == before);
 
     /* malformed requests */
-    bad += check("an unknown object id is refused", put_begin(8, sizeof ps, 0) == 1u);
+    bad += check("an unknown object id is refused", put_begin(8, ED_BK_SETTINGS_LEN, 0) == 1u);
     bad += check("a project of the wrong length is refused", put_begin(2, sizeof(project_store_t) - 4u, 0) == 1u);
-    bad += check("settings of the wrong length are refused", put_begin(1, sizeof ps + 4u, 0) == 1u);
+    bad += check("settings of the wrong length are refused", put_begin(1, ED_BK_SETTINGS_LEN + 4u, 0) == 1u);
     bad += check("a chunk without a begin is refused (5)", (ed_bk_put = 0, put_chunk(1, 0, (const uint8_t *)&ps, 16)) == 5u);
-    put_begin(1, sizeof ps, st_crc32(&ps, sizeof ps));
+    put_begin(1, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN));
     bad += check("a chunk at the wrong offset is refused", put_chunk(1, 16, (const uint8_t *)&ps, 16) == 1u);
     bad += check("a chunk for another object is refused (5)", put_chunk(2, 0, (const uint8_t *)&ps, 16) == 5u);
     {
-        uint32_t off = 0, step = sizeof ps - 8u;
-        put_begin(1, sizeof ps, st_crc32(&ps, sizeof ps));
+        uint32_t off = 0, step = ED_BK_SETTINGS_LEN - 8u;
+        put_begin(1, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN));
         for (; off + 256u <= step; off += 256u)
             put_chunk(1, off, (const uint8_t *)&ps + off, 256);
         if (off < step) put_chunk(1, off, (const uint8_t *)&ps + off, step - off);
         bad += check("a chunk past the length is refused", put_chunk(1, step, (const uint8_t *)&ps, 16) == 1u);
     }
     bad += check("commit before all bytes arrived is refused", put_end(1, 2) == 2u && erases == before);
-    put_begin(1, sizeof ps, st_crc32(&ps, sizeof ps));
+    put_begin(1, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN));
     put_chunk(1, 0, (const uint8_t *)&ps, 64);
     usb.resets++;
     bad += check("a USB reset during PUT ends it (5)", put_chunk(1, 64, (const uint8_t *)&ps + 64, 64) == 5u);
-    put_begin(1, sizeof ps, st_crc32(&ps, sizeof ps));
+    put_begin(1, ED_BK_SETTINGS_LEN, st_crc32(&ps, ED_BK_SETTINGS_LEN));
     fm1_ms += 16000u;
     bad += check("16 s without a chunk ends the PUT (5)", put_chunk(1, 0, (const uint8_t *)&ps, 64) == 5u);
     put_begin(2, sizeof st, 0);
@@ -259,7 +260,7 @@ int main(void)
     bad += check("a project save during PUT (the staging RAM) ends it (5)",
                  put_chunk(2, 64, (const uint8_t *)&ps, 64) == 5u);
     transport_req = 1;
-    bad += check("PUT while starting PLAY is refused (3)", put_begin(1, sizeof ps, 0) == 3u);
+    bad += check("PUT while starting PLAY is refused (3)", put_begin(1, ED_BK_SETTINGS_LEN, 0) == 3u);
     transport_req = 0;
 
     /* projects */
