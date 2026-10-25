@@ -27,7 +27,7 @@
 #define HC_INK T_INK
 
 /* ------------------------------------------------------------ sounds --- */
-typedef struct { const char *name; uint8_t engine, preset, env; } hc_sound_t;
+typedef struct { const char *name; uint8_t engine, preset, env, level; } hc_sound_t;   /* level: P_LEVEL, 0 = the default */
 #define HCE ((uint8_t)ENGI_HC)
 static const hc_sound_t HC_SOUNDS[] = {
     {"SINE", HCE, 0, HE_LONG},      {"SAW", HCE, 1, HE_LONG},        {"TRIANGLE", HCE, 2, HE_LONG},
@@ -44,6 +44,12 @@ static const hc_sound_t HC_SOUNDS[] = {
     {"SAW BASS", 0, 7, HE_SHORT},   {"SHIMMER", 8, 3, HE_SWELL},     {"GOSPEL ORGAN", 7, 2, HE_SUSTAIN},
     {"PURE SINE", HCE, 13, HE_LONG},
     {"ACOUSTIC GTR", 9, 9, HE_KEYS},                    /* fm1-chord: a plucky guitar for LEAD (PHYS) */
+    /* FM6, the six-operator FM with DX7 patches (eng_fm6.c FM6_PRESETS): its own envelopes shape the notes, so ENV,
+     * ATTACK and RELEASE do nothing on these. The quieter ones raised (0.5 dB a step) as far as a held chord's peaks
+     * stay where the other sounds' are */
+    {"DX TINE EP", ENGI_FM6, 0, HE_KEYS},       {"DX BELL", ENGI_FM6, 1, HE_KEYS, 109},  {"DX BASS", ENGI_FM6, 2, HE_SHORT, 108},
+    {"DX BRASS", ENGI_FM6, 3, HE_SUSTAIN},      {"DX PAD", ENGI_FM6, 4, HE_LONG, 112},  {"DX MARIMBA", ENGI_FM6, 5, HE_KEYS, 114},
+    {"DX ORGAN", ENGI_FM6, 6, HE_SUSTAIN},      {"DX PLUCK", ENGI_FM6, 7, HE_KEYS, 112},
 };
 #define HC_NSOUNDS (sizeof HC_SOUNDS / sizeof HC_SOUNDS[0])
 /* the chord machine's ten scales (CC 103 order) -> Felucca's SCALE values */
@@ -253,7 +259,7 @@ static void hc_sound_load(track_t *t, uint32_t idx)
     set_engine_of(t, s->engine);
     if (s->preset)
         apply_preset_to(t, s->preset);
-    t->p[P_LEVEL] = (int16_t)(s->engine == ENGI_PHYS ? 127 : TP[P_LEVEL].def);   /* the physical models sit
+    t->p[P_LEVEL] = (int16_t)(s->level ? s->level : s->engine == ENGI_PHYS ? 127 : TP[P_LEVEL].def);   /* the physical models sit
                                                           * ~12 dB under the rest (3 voices): full level, no trim (fx.c) */
     hc_apply(t);
 }
