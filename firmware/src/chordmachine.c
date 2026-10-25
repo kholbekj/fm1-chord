@@ -157,6 +157,8 @@ static void hc_trk_defaults(hc_trk_t *c)
     memset(c, 0, sizeof *c);
     c->sound = 1;                                        /* SAW */
     c->arp_rate = HR_1_8;
+    c->strum = HST_MED;                                  /* 80 ms a note, the chord machine's default (SLOW rolled
+                                                          * a chord over most of a second) */
     c->env = HE_LONG;
     c->stereo = 1;
     c->cutoff = 127;

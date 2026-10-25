@@ -177,7 +177,7 @@ static int test_mode_menu_knobs(void)
     turn(EN_SELECT, 1); press(B_OCTUP); press(B_OCTUP);
     bad += check("TEMPO: 122", song.g[G_BPM] == 122);
     turn(EN_SELECT, 1); press(B_OCTUP);
-    bad += check("STRUM SPEED: MEDIUM", hc.t[0].strum == HST_MED);
+    bad += check("STRUM SPEED: MEDIUM by default, OCT+: FAST", val_is(HU_MODE, RM_STRUM, "FAST") && hc.t[0].strum == HST_FAST);
     turn(EN_SELECT, 1); press(B_OCTUP);
     bad += check("ARP PATTERN: DOWN", hc.t[0].arp_pat == HA_DOWN);
     turn(EN_SELECT, 1); press(B_OCTUP);
