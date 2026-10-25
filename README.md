@@ -39,9 +39,10 @@ and KNOB 1 to 4 change job while it is down, their map on the screen. **SCL** ke
 bass, voices, joystick), **FX** sound (a key a sound, 16 a page; knobs page, envelope, reverb, delay), **EDIT** mode
 (keys 1 to 11 the play style: PLAY, STRUM, LEAD, DRONE, ARP, REPEAT, SEQ, DRUM, LOOPS, HIRO, EAR; knobs strum, arp,
 rate, kit), **GLO** mix (keys 1 to 4 mute the layers, 7 the metronome, 16 tap tempo; knobs the levels), **SAVE**
-presets (keys 1 to 4 load P1 to P4, 5 to 8 save them). REC on a layer that already plays arms the next empty one.
-Your settings come back after power-off. HOME held gives you Felucca's full synth underneath; hold HOME and press
-SAVE to come back to the chord UI.
+presets (keys 1 to 4 load P1 to P4, 5 to 8 save them, each with its loop). REC on a layer that already plays arms the
+next empty one; REC held clears the layer, held on to 2 s everything. Your settings and the loop come back after
+power-off (the loop paused: PLAY). The presets' loops live in Felucca's third user sample slot, as JIANT keeps its
+songs there: two user sample slots remain (USR1, USR2).
 
 | | | |
 |---|---|---|

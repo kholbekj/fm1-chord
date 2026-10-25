@@ -95,8 +95,8 @@ int main(int argc, char **argv)
         cv_text(136, 66, &AF_S, "REC", T_REC);
         cv_text(4, 82, &AF_L, "124", T_THEME);
         cv_text(80, 92, &AF_S, "Mixed case text", T_TEXT);
-        cv_key_hint(80, 108, KC_OCTUP, "LOAD", 1, T_BG);          /* keycaps: available, unavailable */
-        cv_key_hint(150, 108, KC_OCTDN, "BACK", 0, T_BG);
+        cv_text_on(cv_keycap(80, 106, KC_OCTUP, T_THEME, T_INK, T_BG) + 3, 105, &AF_S, "LOAD", T_MID, T_BG);   /* keycaps: on, off */
+        cv_text_on(cv_keycap(150, 106, KC_OCTDN, T_DIM, T_BG, T_BG) + 3, 105, &AF_S, "BACK", T_DIM, T_BG);
         for (unsigned y = 0; y < 124; y++)
             for (unsigned x = 0; x < 240; x++) {
                 uint16_t v = swap16(cv_px[y * 240 + x]);

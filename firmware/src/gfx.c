@@ -159,14 +159,6 @@ static void cv_blit(uint32_t x, uint32_t y)
     lcd_blit(x, y, cv_w, cv_h, cv_px);
 }
 
-/* canvas rows r0 .. cv_h-1 only, to screen row y + r0 */
-static void cv_blit_from(uint32_t x, uint32_t y, uint32_t r0)
-{
-    GFX_HOOK_BLIT(x, y, r0);
-    if (r0 < cv_h)
-        lcd_blit(x, y + r0, cv_w, cv_h - r0, cv_px + r0 * cv_w);
-}
-
 static inline void cv_pset(int32_t x, int32_t y, uint16_t c)
 {
     y += cv_oy;
@@ -190,44 +182,6 @@ static void cv_rect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t c)
     for (; y < y1; y++)
         for (i = x; i < x1; i++)
             cv_px[(uint32_t)y * cv_w + (uint32_t)i] = sc;
-}
-
-/* a 1 px outline */
-static void cv_frame(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t c)
-{
-    cv_rect(x, y, w, 1, c);
-    cv_rect(x, y + h - 1, w, 1, c);
-    cv_rect(x, y, 1, h, c);
-    cv_rect(x + w - 1, y, 1, h, c);
-}
-
-static void cv_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t c)
-{
-    int32_t dx = x1 > x0 ? x1 - x0 : x0 - x1, sx = x0 < x1 ? 1 : -1;
-    int32_t dy = y1 > y0 ? y0 - y1 : y1 - y0, sy = y0 < y1 ? 1 : -1;
-    int32_t err = dx + dy, guard = 2000;
-    while (guard--) {                       /* bounded: a line is never longer than 480 px */
-        int32_t e2 = 2 * err;               /* both tests use the same error value */
-        cv_pset(x0, y0, c);
-        if (x0 == x1 && y0 == y1)
-            break;
-        if (e2 >= dy) {
-            err += dy;
-            x0 += sx;
-        }
-        if (e2 <= dx) {
-            err += dx;
-            y0 += sy;
-        }
-    }
-}
-
-/* a line `thick` px tall (the scope's trace: 2) */
-static void cv_line_t(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t c, int32_t thick)
-{
-    int32_t t;
-    for (t = 0; t < thick; t++)
-        cv_line(x0, y0 + t, x1, y1 + t, c);
 }
 
 /* coverage (0..16) of corner pixel (i, j) of a radius-r corner, (0, 0) the outermost: 4 x 4 samples */
@@ -479,7 +433,7 @@ static int32_t text_w(const aafont_t *f, const char *s)
  * one whose offset from the pen is nearer the previous glyph's offset, so the space between neighbours stays
  * truest and no glyph is a whole step from its true place (tools/aa_raster.py, text_spacing_test.py).
  * A glyph with one phase (its phases share one bitmap: figures and .) sits at the rounded pen, as when it
- * is drawn alone at text_w of what precedes it (ui_draw.c roll_text). */
+ * is drawn alone at text_w of what precedes it. */
 static int32_t cv_text_flags(int32_t x, int32_t y, const aafont_t *f, const char *s, uint16_t fg, uint16_t bg,
                              uint32_t flags)
 {
@@ -587,13 +541,6 @@ static int32_t cv_text_fit(int32_t x, int32_t y, const aafont_t *f, const char *
     int cut = text_fit(b, sizeof b, s, f, maxw);
     return cv_text_flags(x, y, f, b, fg, bg, cut ? 1u : 0u);
 }
-static int32_t cv_free_text(int32_t x, int32_t y, const aafont_t *f, const char *s, uint16_t fg, uint16_t bg,
-                            int32_t maxw)
-{
-    char b[48];
-    int cut = text_fit(b, sizeof b, s, f, maxw);
-    return cv_text_flags(x, y, f, b, fg, bg, cut ? 9u : 8u);
-}
 
 /* ---------------------------------------------------------- keycaps --- */
 /* a pre-rendered pill (tools/gen_aa_keycaps.py): nibble 0 outside, 1..4 the edge over `under`, 5 the fill,
@@ -643,91 +590,6 @@ static int32_t cv_keycap(int32_t x, int32_t y, uint32_t id, uint16_t fill, uint1
     else
         GFX_HOOK_TEXT(x, y + cv_oy, x + k->w, y + KC_H + cv_oy, k->label, 4u);
     return x + k->w;
-}
-
-/* a key hint: the keycap, then what it does (S, TEXT); unavailable: a DIM keycap and a DIM word. The word sits on
- * the keycap's centre line (S caps 9 rows, the keycap's 7). act may be 0 (the keycap alone); returns the end x */
-#define KH_GAP 4                                  /* keycap -> its word */
-static int32_t kh_w(uint32_t id, const char *act) { return kc_w(id) + (act && act[0] ? KH_GAP + text_w(&AF_S, act) : 0); }
-static int32_t cv_key_hint(int32_t x, int32_t y, uint32_t id, const char *act, int on, uint16_t under)
-{
-    x = cv_keycap(x, y, id, on ? T_KEY : T_DIM, T_INK, under);
-    if (act && act[0])
-        x = cv_text_on(x + KH_GAP, y - 1, &AF_S, act, on ? T_TEXT : T_DIM, under);
-    return x;
-}
-/* a row of key hints from x0 to x1: the first at x0, the last ending at x1, the space shared between them. When
- * the row is too wide the action words go first, from the last hint back (the keycaps never shrink).
- * on: a bit per hint (1 = available) */
-typedef struct { uint8_t key; const char *act; } khint_t;
-static void cv_key_row(int32_t x0, int32_t x1, int32_t y, const khint_t *h, uint32_t n, uint32_t on, uint16_t under)
-{
-    uint32_t i, words = n;                         /* hints 0 .. words-1 keep their word */
-    int32_t w, gap, x = x0;
-    for (;;) {
-        w = 0;
-        for (i = 0; i < n; i++)
-            w += kh_w(h[i].key, i < words ? h[i].act : 0);
-        if (w + 6 * (int32_t)(n - 1u) <= x1 - x0 || !words)
-            break;
-        words--;
-    }
-    gap = n > 1u ? (x1 - x0 - w) / (int32_t)(n - 1u) : 0;
-    for (i = 0; i < n; i++) {
-        if (n > 1u && i + 1u == n)
-            x = x1 - kh_w(h[i].key, i < words ? h[i].act : 0);   /* the last one flush right */
-        x = cv_key_hint(x, y, h[i].key, i < words ? h[i].act : 0, (on >> i) & 1u, under) + gap;
-    }
-}
-
-/* "[OCT+]..." -> the keycap's id and the length of the bracket, else -1 (a bracketed word that is no keycap is text) */
-static int32_t kc_tag(const char *s, uint32_t *len)
-{
-    uint32_t i, n;
-    if (s[0] != '[')
-        return -1;
-    for (n = 1; s[n] && s[n] != ']'; n++)
-        if (n > 8u)
-            return -1;
-    if (s[n] != ']')
-        return -1;
-    for (i = 0; i < KC_COUNT; i++) {
-        const char *l = KC[i].label;
-        uint32_t k = 0;
-        while (k + 1u < n && l[k] == s[k + 1u])
-            k++;
-        if (k + 1u == n && !l[k]) {
-            *len = n + 1u;
-            return (int32_t)i;
-        }
-    }
-    return -1;
-}
-/* free text (S) that may start with a keycap, "[SAVE] HOLD TO UNDO", or have one after its first word,
- * "HOLD [GLO] QUICK": the word, the keycap, then the rest, cut to maxw */
-static int32_t cv_free_hint(int32_t x, int32_t y, const char *s, uint16_t fg, uint16_t bg, int32_t maxw)
-{
-    uint32_t n, i;
-    int32_t id = kc_tag(s, &n), x0 = x;
-    for (i = 0; id < 0 && i < 7u && s[i] && s[i] != ' '; i++)
-        ;
-    if (id < 0 && i && s[i] == ' ' && (id = kc_tag(s + i + 1u, &n)) >= 0) {
-        char w[8] = {0};
-        uint32_t j;
-        for (j = 0; j < i; j++)
-            w[j] = s[j];
-        x = cv_text_on(x, y, &AF_S, w, fg, bg) + KH_GAP;
-        s += i + 1u;
-    }
-    if (id >= 0 && kc_w((uint32_t)id) + KH_GAP < maxw - (x - x0)) {
-        x = cv_keycap(x, y + 1, (uint32_t)id, T_KEY, T_INK, bg) + KH_GAP;
-        s += n;
-        while (*s == ' ')
-            s++;
-        if (!*s)
-            return x - KH_GAP;
-    }
-    return cv_free_text(x, y, &AF_S, s, fg, bg, maxw - (x - x0));
 }
 
 /* one-shot: a line of text in a box of colour bg, blitted (align: 0 left, 1 centre, 2 right) */

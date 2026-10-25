@@ -5,8 +5,7 @@
 
 /* ---------------------------------------------------- build options --- */
 /* build.py: FELUCCA_<NAME>=0 / 1 in the environment overrides these. Elsewhere: FELUCCA_SLICE, FELUCCA_FM4
- * (core.h: the SLICE engine, the DIGITAL engine), FELUCCA_ICONS (icons.c, the parameter icons; on by default),
- * FELUCCA_OTA_RAMONLY (ota.c). */
+ * (core.h: the SLICE engine, the DIGITAL engine), FELUCCA_OTA_RAMONLY (ota.c). */
 #ifndef FELUCCA_FLASH
 #define FELUCCA_FLASH 1          /* flash driver + storage.c: settings, projects, user presets */
 #endif
@@ -77,12 +76,8 @@
 /* -------------------------------------------------------------- UI --- */
 #include "panel.c"
 #include "ui.c"
-#include "icons.c"               /* parameter icons (FELUCCA_ICONS), used by ui_draw.c */
-#include "ui_graph.c"
-#include "ui_draw.c"
-#include "ui_menu.c"
-#include "ui_input.c"
-#include "ui_layer.c"              /* the quick layers (FX GLO SCL EDIT held) */
+#include "icons.c"               /* the icon font cells (cv_icon_on) */
+#include "ui_base.c"             /* LEDs, button holds, the battery, panel setup */
 
 /* --------------------------------------------- storage, update, editor --- */
 #if FELUCCA_FLASH
@@ -100,5 +95,5 @@
 #if FELUCCA_CDC
 #include "console.c"
 #endif
-#include "hui.c"                 /* fm1-chord: the chord machine UI (over Felucca's) */
+#include "hui.c"                 /* fm1-chord: the chord machine UI */
 #include "main.c"

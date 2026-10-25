@@ -194,7 +194,7 @@ def main(out):
         lane = DY + 100 + i * 7
         route([(ax, ay - 20), (ax, lane), (DX + DW - 6, lane), (box[0], (box[1] + box[3]) / 2)], (ax, ay - 20))
     # bottom row: HOME SAVE ARP SEQ PLAY REC, straight down through the keys to lanes under the device
-    bottom = (("HOME", "Home", "held: Felucca's synth", WHITE), ("SAVE", "Presets P1–P4", "again: next slot · OCT+ saves", GREEN),
+    bottom = (("HOME", "Home", "from any menu or list", WHITE), ("SAVE", "Presets P1–P4", "again: next slot · OCT+ saves", GREEN),
               ("ARP", "Style before", "EDIT: the next", RED), ("SEQ", "LOOPER", "bars, clear all", BLUE),
               ("PLAY", "Play / pause", "looper, sequencer, loops", GREEN), ("REC", "Record a layer", "held: clear it", RED))
     sizes = [card_size(d, n, b, s, 140) for n, b, s, _ in bottom]
@@ -221,7 +221,7 @@ def main(out):
     d.text((34, ly + 66), "C#4 ↑  D#4 ↗  F#4 →  G#4 ↘  A#4 ↓  C#5 ↙  D#5 ←  F#5 ↖  the joystick, held with a chord;  "
                           "F#3 INVERT  G#3 LOCK  A#3 HOLD", fill=INK, font=f15)
     d.text((34, ly + 90), "Colours: yellow sound · grey key · red mode · green presets and play · blue looper.  "
-                          "A menu button again: its next page; held: its layer.  OCT− + OCT+: RANDOMIZE.  HOME + SAVE: back from Felucca.", fill=DIM, font=f13)
+                          "A menu button again: its next page; held: its layer.  OCT− + OCT+: RANDOMIZE.", fill=DIM, font=f13)
     im.save(out)
     print(out)
 

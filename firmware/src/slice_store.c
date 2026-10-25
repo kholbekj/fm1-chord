@@ -90,7 +90,7 @@ static void slc_store_poll(void)
 {
     uint32_t k;
     int rc = 0, w = 0;
-    if (!slc_man_save || transport_busy() || slice_page_on())   /* (written once the page is left) */
+    if (!slc_man_save || transport_busy())
         return;
     for (k = 0; k < SMP_USER_SLOTS; k++)
         if ((slc_man_save >> k) & 1u) {

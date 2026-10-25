@@ -38,7 +38,6 @@ static uint8_t kb_note[27], kb_trk[27];  /* per key: the note it started and on 
 static uint8_t last_note = 60;
 static volatile uint8_t transport_req;   /* 1 start, 2 stop, 3 restart (from the UI) */
 static volatile uint8_t panic_req;       /* bit per track: release every sounding note (preset / engine change) */
-static volatile uint8_t midi_hint;       /* MIDI IN played track n - 1, which is not the selected one (the UI says so) */
 
 static uint32_t trk_index(const track_t *t) { return (uint32_t)(t - trk); }
 
@@ -456,14 +455,14 @@ static void keyboard_block(void)
             continue;
         if ((cur >> k) & 1u) {                    /* the selected track; the key-up goes to the same one */
             kb_trk[k] = song.sel;
-            if (fm1_in.buttons & kb_mask) {       /* a layer's button held: the key is the layer's (ui_layer.c), */
+            if (fm1_in.buttons & kb_mask) {       /* a layer's button held: the key is the layer's (hui.c), */
                 kb_note[k] = KB_SILENT;           /* with FX an effect (perform.c) */
                 kb_layer |= 1u << k;
                 if (fm1_in.buttons & perf_mask)
                     perf_press(perf_key(k), 1);
                 continue;
             }
-            if (song.grid == 2u)                  /* NAME (ui_name.c): every key types, none sounds */
+            if (song.grid == 2u)                  /* NAME (Felucca's UI; not set now): no key sounds */
                 kb_note[k] = KB_SILENT;
             else if (song.grid)                   /* the DRUM grid: a lane key plays its lane, the rest are the UI's */
                 kb_note[k] = key_black(k) && key_place(k) < NLANE ? DRUM_LANE_NOTE[key_place(k)] : KB_SILENT;
@@ -708,7 +707,6 @@ static void events_block(uint32_t n)
         memset(midi_ch, 0, sizeof midi_ch);
         memset(midi_owners, 0, sizeof midi_owners);
         memset(mchord, 0, sizeof mchord);
-        midi_hint = 0;
         for (i = 0; i < NTRK; i++) {
             trk[i].rh_n = trk[i].rskip_n = 0;
             trk[i].seq_n = trk[i].seq_hold = trk[i].slide_glide = 0;

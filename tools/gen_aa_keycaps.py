@@ -19,7 +19,7 @@ Rows back to back, 2 px per byte (high nibble first), each pill byte-aligned (aa
 Knob arcs: one quadrant (the top right one: dx, dy = 0 .. R-1 from the centre, which sits on a pixel
 corner) of a 2 px ring of outer radius R, per knob size: the ring's coverage (4-bit, 4 x 4 samples) and
 the angle of each pixel's centre (0 = 12 o'clock .. 255 = 3 o'clock, clockwise). The other quadrants
-are its mirrors (src/ui_graph.c knob_arc), so no trigonometry runs in the firmware.
+are its mirrors, so no trigonometry runs in the firmware.
 
 Prints the byte cost of the set.
 """

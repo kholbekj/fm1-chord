@@ -8,9 +8,7 @@
  *   cc -O1 -w -Ibuild/gen -Ifirmware/src -o build/host/hui_replay tests/hui_replay.c -lm
  * The session starts from power-on defaults: a browser that kept a save of this firmware started from that
  * instead (its key, scale, sounds and styles), so a replay can differ there. */
-#define UI_TEST_NO_MAIN 1
-#define HUI_DEFAULT 1
-#include "ui_test.c"
+#include "ui_host.c"
 
 /* the emulator's ids: 0..13 the buttons in its panel order, 14.. the keys (F3 up); its knobs in panel order */
 static const uint8_t RP_BTN[14] = {B_OCTDN, B_OCTUP, B_FX, B_SCL, B_ENV, B_LFO, B_EDIT, B_GLO, B_HOME, B_SAVE, B_ARP, B_SEQ,
@@ -96,7 +94,6 @@ int main(int argc, char **argv)
     ui_power_on();
     hc_init();
     memset(&hui, 0, sizeof hui);
-    hui.on = 1;
     hui.force = 1;
     hui.rnd = 0x9E3779B9u;
     settings.palette = UI_DEFAULT_INDEX;

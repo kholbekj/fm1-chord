@@ -171,7 +171,7 @@ static void fm6_load_slot(uint32_t tr, uint32_t s)
     fm6_slot[tr % NTRK] = (uint8_t)s;
 }
 
-/* a sound load put a PTCH value in (a preset, a user preset, undo, an engine change): its patch */
+/* a sound load put a PTCH value in (a preset, a user preset, an engine change): its patch */
 static void fm6_track_loaded(const track_t *t)
 {
     uint32_t tr = (uint32_t)(t - trk);

@@ -77,12 +77,12 @@ EXTRA = {
     "x_back": "control_arrow_back", "x_down": "symbol_carret_down", "x_up": "symbol_carret_up",
     "x_left": "symbol_carret_left", "x_right": "symbol_carret_right", "x_hugelton": "symbol_hugelton",
     # page and state icons (Fukiai 0.8.0): MIXER / PHRASES / SONG pages, motion, calibration, the battery
-    # (battery_2 is not used: the stock level 0..3 maps to battery_0 / 1 / 3 / 4, see ui_draw.c batt_icon)
+    # (battery_2 is not used: the stock level 0..3 maps to battery_0 / 1 / 3 / 4, see ui_base.c batt_icon)
     "x_mixer": "ui_slider_vertical", "x_pattern": "symbol_grid_nine", "x_song": "symbol_disc",
     "x_motion": "symbol_motion", "x_motion_rec": "symbol_motion_rec", "x_motion_del": "symbol_motion_delete",
     "x_doctor": "symbol_doctor", "x_bat0": "system_battery_0", "x_bat1": "system_battery_1",
     "x_bat3": "system_battery_3", "x_bat4": "system_battery_4", "x_bat_chg": "system_battery_charging",
-    # the FX hold layer (ui_draw.c draw_layer, Fukiai 0.8.3) and the HOLD menu row
+    # the FX hold layer and the HOLD menu row of Felucca's UI (Fukiai 0.8.3)
     "x_fx": "control_fx", "x_timer": "symbol_stopwatch", "x_hpf": "function_filter_hpf",
     "x_repeat": "control_arrow_loop", "x_reverse": "control_reverse_f", "x_tstop": "symbol_stop",
     "x_freeze": "symbol_freeze",
@@ -109,7 +109,7 @@ SMALL_EXTRA = ["x_trk1", "x_trk2", "x_trk3", "x_trk4", "x_trk1_o", "x_trk2_o", "
                "x_fx", "x_hpf", "x_repeat", "x_reverse", "x_tstop", "x_freeze"]
 
 # the 24 px set: the header battery (Fukiai's battery is a wide, short glyph: at 16 px its body was 12 x 6)
-# and the FX map's effect cells (ui_layer.c layer_fx: the icon alone, no name)
+# and the FX map's effect cells of Felucca's UI (the icon alone, no name)
 HUGE_DEFAULT = ["x_bat0", "x_bat1", "x_bat3", "x_bat4", "x_bat_chg", "x_usb",   # (+ the USB-C plug: as flat)
                 "x_repeat", "x_reverse", "cutoff", "x_hpf", "x_tstop", "x_freeze", "x_oct_up", "x_oct_dn"]
 

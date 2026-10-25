@@ -19,6 +19,8 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
 #include "../firmware/src/gfx.c"
 #include "../firmware/src/panel.c"
 #include "../firmware/src/ui.c"
+static char said[24];                                     /* the last message (on the device: hui.c hui_say) */
+static void hui_say(const char *s) { str_cpy(said, s, sizeof said); }
 static void panel_setup(void) {}
 
 static uint8_t nor[0x100000], flash_ok = 1;

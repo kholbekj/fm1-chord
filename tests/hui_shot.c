@@ -5,10 +5,8 @@
  * a message. PPMs into OUTDIR (Pillow converts them: tests/hui_shot.py or by hand).
  *   build/host/hui_shot OUTDIR
  *   cc -O1 -w -Ibuild/gen -Ifirmware/src -o build/host/hui_shot tests/hui_shot.c -lm */
-#define UI_TEST_NO_MAIN 1
-#define HUI_DEFAULT 1
-#include "ui_test.c"
-static void hframes(uint32_t n) { while (n--) frame(); }   /* (input and draw; ui_test.c frames() only draws) */
+#include "ui_host.c"
+static void hframes(uint32_t n) { while (n--) frame(); }   /* (n frames; frames() counts milliseconds) */
 
 static void ppm(const char *dir, const char *name)
 {
@@ -34,7 +32,6 @@ static void hui_power_on(void)
     ui_power_on();
     hc_init();
     memset(&hui, 0, sizeof hui);
-    hui.on = 1;
     hui.force = 1;
     hui.rnd = 0x9E3779B9u;
     settings.palette = UI_DEFAULT_INDEX;

@@ -13,18 +13,9 @@
 #                   (tests/target_budget.txt, +10 %; exact, static).
 #   voices          the budget of 8, steal fades, MONO / LEGATO / UNISON keep their note, the VOICE cap,
 #                   no hanging notes on any MIDI / key routing.
-# UI renders (tests/ui_render.c): every screen in every palette from the real drawing code: the layout lint (no text
-#                   off the screen, cut, hidden, overlapping or spilling out of its cell / card; only free text
-#                   ellipsised), MONO gray, the draw cost, the text audit (build/ui_new/text_audit.tsv);
-#                   PNGs of MONO GREEN PAPER in build/ui_new (tests/ui_render.py), the findings in build/ui_new/report.txt;
-#                   FM6's 32 algorithm charts as drawn (no box overlapping, no route through a box or crossing another);
-#                   DIGITAL's screens (its algorithm charts, OP ENV) with FELUCCA_FM4=1 too (build/ui_fm4: lint, MONO);
-#                   every frame of the rolling digits (lint, MONO), their filmstrips in build/ui_slot.
-# UI (tests/ui_test.c): the UI sources against stub display / buttons / knobs: sound loads keep the steps and
-#                   the track's ARP / SCL / SLICER, the SEQ > PATTERNS loader and its REPLACE? dialog, the
-#                   one-step undo of both (SAVE held), REC on TRACKS / SEQ / ARP, STEP and ARP while recording,
-#                   MIDI IN ROUT, saves refused while playing and the OVERWRITE? dialog, MUTE on TRACKS KNOB 1,
-#                   the DRUM grid (keys, knobs, LEDs, pages, live recording into it, BEAT from PATTERNS).
+# UI (tests/hui_test.c): the chord machine UI (hui.c) against stub display / buttons / knobs: power-on, the
+#                   menus' pages and every card, the knobs, tap tempo, presets P1..P4 and their record, the layers,
+#                   the looper; tests/base_test.c: the panel recovery, the large face, MIDI IN overflow.
 # Audio / persistence / editor: the real C paths against simulated DMA and NOR flash: bounded overload
 #                   fades, shared-voice limits, deferred settings and retries, failed-save rollback,
 #                   malformed transfers, transport-stop timeouts, MIDI and UART recovery.
@@ -117,7 +108,9 @@ if [ -f build/gen/felucca_tables.h ]; then
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/chordmachine_test" tests/chordmachine_test.c -lm
     run "chord machine keys (CHRD HI): degrees, the four modifier tables, revoicing, INVERT / LOCK / HOLD, BASS, VOICES, leading, MIDI IN" "$OUT/chordmachine_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/hui_test" tests/hui_test.c -lm
-    run "chord machine UI (hui.c): power-on, the menus' pages and every card, the knobs, tap tempo, presets P1..P4, the hand-over" "$OUT/hui_test"
+    run "chord machine UI (hui.c): power-on, the menus' pages and every card, the knobs, tap tempo, presets P1..P4 and their record" "$OUT/hui_test"
+    $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/base_test" tests/base_test.c -lm
+    run "UI basics: panel recovery, the large face, MIDI IN overflow" "$OUT/base_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/speaker_test" tests/speaker_test.c -lm
     run "SPEAKER BASS+: harmonics of the bass, the sub cut, no offset after" "$OUT/speaker_test"
     run "DSP render (ANALOG preset 0)" "$OUT/hostsim" 0 0 1 "$OUT/render.wav"
@@ -145,19 +138,6 @@ if [ -f build/gen/felucca_tables.h ]; then
     fi
     $CC -O1 -w -Ibuild/gen -o "$OUT/settings_test" tests/settings_test.c
     run "settings: PER1..PER4 migration, palette ids and preference preservation" "$OUT/settings_test"
-    $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/ui_test" tests/ui_test.c -lm
-    run "UI: sounds keep steps, undo, recording, MIDI overflow, pending saves, panel recovery, drum grid, song chain, MONO gray" "$OUT/ui_test"
-    $CC -O1 -w -Ibuild/gen -Ifirmware/src -Itests -o "$OUT/ui_render" tests/ui_render.c -lm
-    mkdir -p build/ui_new/ppm build/ui_slot
-    run "UI renders: layout lint (every screen and palette, every page, engine and column value), MONO gray, draw cost" \
-        "$OUT/ui_render" build/ui_new build/ui_slot
-    if python3 -c "import PIL" 2>/dev/null; then python3 tests/ui_render.py build/ui_new build/ui_slot; fi
-    $CC -w -DFELUCCA_FM4=1 -Ibuild/gen -Ifirmware/src -o "$OUT/ui_test_fm4" tests/ui_test.c -lm
-    run "UI built with FELUCCA_FM4=1 (DIGITAL, kept in the tree): its OP pages, EDIT cycle, algorithm charts" "$OUT/ui_test_fm4"
-    $CC -O1 -w -DFELUCCA_FM4=1 -Ibuild/gen -Ifirmware/src -Itests -o "$OUT/ui_render_fm4" tests/ui_render.c -lm
-    mkdir -p build/ui_fm4/ppm build/ui_fm4_slot
-    run "UI renders with FELUCCA_FM4=1: DIGITAL's screens (EDIT, OP ENV, the 8 algorithm charts), lint, MONO gray" \
-        "$OUT/ui_render_fm4" build/ui_fm4 build/ui_fm4_slot
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/audio_test" tests/audio_test.c -lm
     run "audio: overload protection, bounded fades and DMA diagnostics" "$OUT/audio_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/persistence_test" tests/persistence_test.c -lm

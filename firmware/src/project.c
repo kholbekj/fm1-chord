@@ -711,7 +711,6 @@ static int project_save_as(uint32_t slot, const char *name)
     return 0;
 }
 static int project_save(uint32_t slot) { return project_save_as(slot, 0); }
-static void project_cur_name(char *b) { str_cpy(b, proj_name, PROJ_NAME_LEN + 1u); }   /* b: 13 bytes */
 
 /* slot's name -> b (PROJ_NAME_LEN + 1 bytes); 0 = an empty slot (b ""). Uses proj_scratch */
 static int project_name(uint32_t slot, char *b)
@@ -721,40 +720,6 @@ static int project_name(uint32_t slot, char *b)
         return 0;
     proj_name_get(b, (const uint8_t *)proj_scratch.name);
     return 1;
-}
-
-/* a stored project renamed in place (nothing else of it changes; the music playing is not touched, but the slot
- * it was loaded from / saved to: its name is the new one, the next SAVE's prefill): 0 done, 1 refused (playing,
- * an empty slot), 2 failed (the slot as it was) */
-static int project_rename(uint32_t slot, const char *name)
-{
-    project_t *p = &proj_scratch;
-    if (transport_busy()) {
-        ui_message("STOP TO SAVE");
-        return 1;
-    }
-    if (!proj_import(p, &proj_slot[slot & 3u], sizeof(project_store_t))) {
-        ui_message("EMPTY SLOT");
-        return 1;
-    }
-    memset(p->name, 0, sizeof p->name);
-    memcpy(p->name, name, str_len(name) < PROJ_NAME_LEN ? str_len(name) : PROJ_NAME_LEN);
-    proj_wire_gen++;
-    if (!proj_pack(&proj_wire, p)) { ui_message("SAVE FORMAT ERROR"); return 2; }
-#if FELUCCA_FLASH
-    if (flash_ok && st_save(OBJ_PROJECT0 + (slot & 3u), &proj_wire, sizeof proj_wire)) {
-        ui_message("SAVE ERROR");
-        return 2;
-    }
-#endif
-    memcpy(&proj_slot[slot & 3u], &proj_wire, sizeof proj_wire);
-    if (proj_cur == (slot & 3u))
-        proj_name_get(proj_name, (const uint8_t *)p->name);
-#if FELUCCA_FLASH
-    if (flash_ok) { ui_message("RENAMED"); return 0; }
-#endif
-    ui_message("RENAMED (RAM)");
-    return 0;
 }
 
 static int project_restore_runtime(const project_t *input)
@@ -775,7 +740,6 @@ static int project_restore_runtime(const project_t *input)
     motion = p->motion;
     memset(motion_active, 0, sizeof motion_active);
     motion_base_valid = 0;
-    ui.song_row = 0;
     for (i = 0; i < G_COUNT; i++)
         if (i != G_SLOT && i != G_LOAD && i != G_SAVE)
             song.g[i] = (int16_t)clamp(p->g[i], GP[i].min, GP[i].max);
@@ -803,8 +767,7 @@ static int project_restore_runtime(const project_t *input)
     fm1_irq_on();
     proj_name_get(proj_name, (const uint8_t *)p->name);
     proj_cur = PROJ_NO_SLOT;                            /* (project_load: its slot) */
-    undo.trk = 0;                                       /* (ui.c) the undo copy belongs to the old project */
-    undo_depth++;                                       /* and these loads take none */
+    load_depth++;
     for (k = 0; k < NTRK; k++) {                        /* the power-on sounds: format 1 (tracks 2..4), old drums */
         track_t *t = &trk[k];
         int16_t keep[P_COUNT];
@@ -820,9 +783,8 @@ static int project_restore_runtime(const project_t *input)
                 t->p[i] = TP[i].def;
             fm1_irq_on();
         }
-        pat_sig[k] = ~steps_sig(t);                     /* a project's steps are the user's */
     }
-    undo_depth--;
+    load_depth--;
     sync_reload = 1;
     ui.force = 1;
     ui_message("LOADED");

@@ -4,8 +4,7 @@
  * difference) and the largest sample-to-sample jump, to see whether the filter adds noise or clicks.
  *   cc -O1 -w -Ibuild/gen -Ifirmware/src -o build/host/hcfx_probe tests/hcfx_probe.c -lm
  *   build/host/hcfx_probe [OUT.wav] [MASTER_Q12] */
-#define UI_TEST_NO_MAIN 1
-#include "ui_test.c"
+#include "ui_host.c"
 
 #define K_C4 7u
 

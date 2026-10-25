@@ -30,6 +30,14 @@ static int check(const char *what, int ok)
     printf("%-46s %s\n", what, ok ? "ok" : "FAIL");
     return ok ? 0 : 1;
 }
+static int pat_empty(const up_rec_t *r)           /* no note in the record's 16 steps */
+{
+    uint32_t i;
+    for (i = 0; i < 16u; i++)
+        if (r->note[i])
+            return 0;
+    return 1;
+}
 
 static uint32_t put_frame(uint8_t *a, uint32_t slot, uint32_t eng, const char *name, int32_t base)
 {
@@ -98,13 +106,6 @@ int main(void)
     bad += check("UP_PUT 13-char name -> args", up_parse(a, n, &r, &slot) == 1);
     n = put_frame(a, 0, 0, "TWELVE CHARS", 0);
     bad += check("UP_PUT 12-char name ok", up_parse(a, n, &r, &slot) == 0 && !memcmp(r.name, "TWELVE CHARS", 12));
-    {
-        char nm[13];
-        *up_rec(31) = r;
-        memcpy(up_rec(31)->name, "Low case", 9);
-        up_name(31, nm);
-        bad += check("name shown upper case", !strcmp(nm, "LOW CASE"));
-    }
 
     /* bank round trip through storage.c */
     n = put_frame(a, 17, 3, "Keys", 7);
@@ -153,7 +154,7 @@ int main(void)
         ok = up_parse(g, m, &got, &slot) == 0 && slot == 9u && got.ver == UP_VER_GRID && up_valid(&got) &&
              got.note[0] == 0x09u && got.flags[0] == 0x09u && got.note[1] == 0x08u && !got.flags[1] &&
              got.note[2] == 0x88u && got.flags[2] == 0x80u && got.note[5] == 0x08u && !got.flags[5] &&
-             got.engine == ENGI_DRUM && !up_pat_empty(&got);
+             got.engine == ENGI_DRUM && !pat_empty(&got);
         bad += check("UP_PUT kind 1: a grid record, accents only on hits", ok);
         g[m - 17u] = 0;                                     /* kind 0: the notes and flags as before */
         ok = up_parse(g, m, &got, &slot) == 0 && got.ver == UP_VER && got.note[2] == 0x08u && got.flags[0] == 4u;   /* (flags 0x7F: a tie) */
@@ -308,10 +309,10 @@ int main(void)
         st[20] = (step_t){{70}, 1, ST_NOTE, 0, 90};         /* beyond 16: not stored */
         up_pat_from(&r, st);
         bad += check("steps -> pattern", r.note[0] == 60 && r.flags[0] == 3 && r.note[1] == 0 && r.flags[1] == 4 &&
-                                             r.note[2] == 0 && r.flags[2] == 0 && !up_pat_empty(&r));
+                                             r.note[2] == 0 && r.flags[2] == 0 && !pat_empty(&r));
         memset(st, 0, sizeof st);
         up_pat_from(&r, st);
-        bad += check("empty sequencer -> empty pattern", up_pat_empty(&r));
+        bad += check("empty sequencer -> empty pattern", pat_empty(&r));
     }
     printf("%s\n", bad ? "USER PRESET TEST FAILED" : "user preset test passed");
     return bad != 0;

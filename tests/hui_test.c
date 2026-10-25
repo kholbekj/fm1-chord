@@ -4,19 +4,16 @@
  * the track (its sound, CHRD HI), the menus open on their buttons and walk their pages on them again, SELECT walks
  * the pages, KNOB 1..4 set every card, the actions arm and OCT+ does them, the knobs on HOME (filter, attack,
  * release), the sound and layer lists, the octave buttons, tap tempo, the presets save and load the chord machine
- * state with the project, every screen draws, and HOME held / SAVE + HOME hand over to Felucca's UI and back.
+ * state with the project, every screen draws, and HOME held goes HOME.
  * Run by tests/run_tests.sh (needs build/gen from one firmware build). */
-#define UI_TEST_NO_MAIN 1
-#define HUI_DEFAULT 1
-#include "ui_test.c"
-static void hframes(uint32_t n) { while (n--) frame(); }   /* (input and draw; ui_test.c frames() only draws) */
+#include "ui_host.c"
+static void hframes(uint32_t n) { while (n--) frame(); }   /* (n frames; frames() counts milliseconds) */
 
 static void hui_power_on(void)
 {
     ui_power_on();
     hc_init();
     memset(&hui, 0, sizeof hui);
-    hui.on = 1;
     hui.force = 1;
     hui.rnd = 0x9E3779B9u;
     usb.config = 1;
@@ -50,7 +47,7 @@ static int test_boot_and_menus(void)
     track_t *t = &trk[0];
     hui_power_on();
     bad += check("power-on: the chord machine UI is up, HOME, the track plays chord machine keys with the SAW sound",
-                 hui.on && hui.screen == HU_HOME && t->p[P_CHRD] == CH_HI && hc.t[0].sound == 1u && t->eng_req == ENGI_HC &&
+                 hui.screen == HU_HOME && t->p[P_CHRD] == CH_HI && hc.t[0].sound == 1u && t->eng_req == ENGI_HC &&
                  t->p[P_VOICE] == V_POLY);
     press(B_SCL);
     bad += check("SCL: the KEY menu, its first page", on_page(HU_KEY, 0));
@@ -461,28 +458,10 @@ static int test_draw_and_handover(void)
     bad += check("HOME with a chord: the chord's name on screen (the big face has every glyph of it)",
                  str_eq(chord_last[0].name, "C7") && text_w(&AF_X, "C7") > 0);
     key_up(10); key_up(0);
+    press(B_SCL);
+    bad += check("SCL: the KEY menu", hui.screen == HU_KEY);
     hold(B_HOME);
-    bad += check("HOME held: Felucca's UI", !hui.on && ui.home);
-    hframes(2);
-    fm1_in.buttons |= 1u << panel.btn[B_HOME];
-    hframes(10);                                         /* (HOME down first, as a hand does: Felucca times it) */
-    press(B_SAVE);
-    fm1_in.buttons &= ~(1u << panel.btn[B_HOME]);
-    hframes(2);
-    bad += check("SAVE with HOME held: the chord machine UI again", hui.on);
-    hframes(2);
-    bad += check("back in the chord UI: Felucca keeps no HOME press and no menu", !ui.home_t0 && !ui.menu);
-    hold(B_HOME);                                        /* to Felucca and back a second time: no menu on top */
-    bad += check("HOME held again: Felucca's UI, on its plain screen", !hui.on && ui.home && !ui.menu);
-    bad += check("the way back is shown", str_eq(ui.msg, "HOME+SAVE: CHORDS") && ui.msg_t > 0u);
-    hframes(40);
-    bad += check("HOME let go: no tap, Felucca's menu stays closed", !ui.menu);
-    fm1_in.buttons |= 1u << panel.btn[B_HOME];
-    hframes(10);                                         /* (HOME down first, as a hand does: Felucca times it) */
-    press(B_SAVE);
-    fm1_in.buttons &= ~(1u << panel.btn[B_HOME]);
-    hframes(2);
-    bad += check("HOME + SAVE again: the chord machine UI", hui.on && !ui.menu);
+    bad += check("HOME held, then let go: HOME (no other UI underneath)", hui.screen == HU_HOME && !hui.ly);
     return bad;
 }
 

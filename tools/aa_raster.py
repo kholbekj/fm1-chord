@@ -93,7 +93,7 @@ def _phase(font_hi, ch, w, h, ox16, base, features, gamma):
     return best and best[1]
 
 
-FIXED = "0123456789."       # one phase, at the rounded pen: src/ui_draw.c roll_text draws a number a character at
+FIXED = "0123456789."       # one phase, at the rounded pen: Felucca's rolling digits drew a number a character at
                             # a time (a sign leads the number: at pen 0 it is phase 0 either way)
 WHOLE = "0123456789."       # with tabular, their advance in whole pixels too: a number keeps an even pitch
 

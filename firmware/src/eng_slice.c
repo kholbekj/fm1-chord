@@ -7,8 +7,8 @@
  * slots as SAMPLE's, eng_sample.c), whose zones are played one after the other as one recording
  * (a zone that shares its data with an earlier one is skipped). An empty slot plays BREAK.
  *
- * Slices (DIV): 4 / 8 / 16 / 32 equal ones, AUTO: one per onset, or MAN: set by hand on the EDIT family's SLICES
- * page (ui_slice.c) for a user slot (BREAK and an empty slot: MAN plays AUTO). IMA ADPCM can only be entered
+ * Slices (DIV): 4 / 8 / 16 / 32 equal ones, AUTO: one per onset, or MAN: set by hand for a user slot and stored
+ * with it (slice_store.c; BREAK and an empty slot: MAN plays AUTO). IMA ADPCM can only be entered
  * at a known decoder state, so each source keeps a table (slc_src_t): the states at the 128 grid
  * points k * len / 128 (every equal slice starts on one, and they are the reverse checkpoints) and
  * up to 32 AUTO starts with their states. BREAK's table is written at build time (its hits are

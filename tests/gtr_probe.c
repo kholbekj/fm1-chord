@@ -4,9 +4,7 @@
  * the other plucked sounds.
  *   cc -O1 -w -Ibuild/gen -Ifirmware/src -o build/host/gtr_probe tests/gtr_probe.c -lm
  *   build/host/gtr_probe OUT.wav SOUND_INDEX */
-#define UI_TEST_NO_MAIN 1
-#define HUI_DEFAULT 1
-#include "ui_test.c"
+#include "ui_host.c"
 static void hframes(uint32_t n) { while (n--) frame(); }
 static void run_ms2(uint32_t ms) { uint32_t n = ms * (FS / 1000u) / CTL; while (n--) events_block(CTL); }
 static void hui_power_on(void)
@@ -14,7 +12,6 @@ static void hui_power_on(void)
     ui_power_on();
     hc_init();
     memset(&hui, 0, sizeof hui);
-    hui.on = 1;
     hui.force = 1;
     hui.rnd = 0x9E3779B9u;
     settings.palette = 3;
@@ -39,7 +36,7 @@ int main(int argc, char **argv)
     hui_power_on();
     run_ms2(100);
     if (argc > 3) {                                    /* plain Felucca: engine 9 preset argv[3], notes at 127 */
-        hui.on = 0; trk[0].p[P_CHRD] = 0; trk_hc[0] = 0; trk_pair[0] = 0;
+        trk[0].p[P_CHRD] = 0; trk_hc[0] = 0; trk_pair[0] = 0;
         host_preset(&trk[0], argc > 4 ? (uint32_t)atoi(argv[4]) : 9u, (uint32_t)atoi(argv[3]));
         trk[0].p[P_VOICE] = V_POLY;
     } else {

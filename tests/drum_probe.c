@@ -4,16 +4,13 @@
  * voices started per hit, to hear / see what the loop does.
  *   cc -O1 -w -Ibuild/gen -Ifirmware/src -o build/host/drum_probe tests/drum_probe.c -lm
  *   build/host/drum_probe [OUT.wav] */
-#define UI_TEST_NO_MAIN 1
-#define HUI_DEFAULT 1
-#include "ui_test.c"
+#include "ui_host.c"
 static void hframes(uint32_t n) { while (n--) frame(); }
 static void hui_power_on(void)                           /* as tests/hui_shot.c */
 {
     ui_power_on();
     hc_init();
     memset(&hui, 0, sizeof hui);
-    hui.on = 1;
     hui.force = 1;
     hui.rnd = 0x9E3779B9u;
     settings.palette = 3;
@@ -43,7 +40,7 @@ int main(int argc, char **argv)
            t->p[P_E0], t->p[P_E0 + 1], t->p[P_E0 + 2], t->p[P_E0 + 3], t->p[P_E0 + 4], t->p[P_E0 + 5], t->p[P_E0 + 6], t->p[P_E0 + 7], t->p[P_LD_AMP]);
     if (argc > 2 && argv[2][0] == 'e') { t->p[P_ATK] = 0; t->p[P_DEC] = 64; t->p[P_SUS] = 127; t->p[P_REL] = 64; }
     if (argc > 2 && argv[2][0] == 'p') {                            /* variant: Felucca plain, a kick every 500 ms */
-        hcd_loop_stop(); hui.on = 0; t->p[P_CHRD] = 0; hc_play_set(t, HP_PLAY); set_engine_of(t, ENGI_DRUM);
+        hcd_loop_stop(); t->p[P_CHRD] = 0; hc_play_set(t, HP_PLAY); set_engine_of(t, ENGI_DRUM);
     }
     if (w) wav_hdr(w, frames);
     for (f = 0; f < frames; f += CTL) {

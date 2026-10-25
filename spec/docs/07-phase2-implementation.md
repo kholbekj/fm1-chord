@@ -12,7 +12,7 @@ RAM: 93.5 KB of 98.3 KB (4.8 KB headroom), pool 333 KB of 344 KB.
 | `firmware/src/chordmachine.c` | `hc_trk_t` (every chord machine setting of a track), `hc_apply` (projects them onto Felucca's parameters and buses), the play modes PLAY / STRUM / LEAD / DRONE / ARP / REPEAT on a sample clock (`hc_tick`), the arp patterns and rates, the gestures |
 | `firmware/src/hcfx.c` | the master stage after the master level: FILTER wheel (low-pass), HI-PASS, FLANGER (4 modes), TAPE (LOFI / VINYL / TAPE), OUT LEVEL |
 | `firmware/src/voice.c`, `fx.c` | STEREO partner voices (a detuned twin per note, the two sides mixed mid/side, width 0.7); bit-identical when off (the 87 golden renders are unchanged) |
-| `firmware/src/hui.c` | the UI: HOME, the KEY (grey) / SOUND (yellow) / MODE (red) menus, PRESETS (green), tap tempo, randomize, the sound list, the hand-over to Felucca's UI |
+| `firmware/src/hui.c` | the UI: HOME, the KEY (grey) / SOUND (yellow) / MODE (red) menus, PRESETS (green), tap tempo, randomize, the sound list |
 | `firmware/src/settings_persist.c` | PER5: the four presets' chord machine state travels in the settings record |
 | `tools/gen_aa_font.py`, `gfx.c` | a 44 px face "X" for the chord name (32 glyphs, 7.7 KB) |
 | `tests/chordmachine_test.c` | 137 checks: chords, gestures, play modes, stereo, the master stage |
@@ -39,7 +39,7 @@ RAM: 93.5 KB of 98.3 KB (4.8 KB headroom), pool 333 KB of 344 KB.
 | ADSR preset cycle, LFO cycle | ENV, LFO buttons |
 | Red + 5 (Arp) | ARP button toggles ARP mode |
 
-HOME held one second opens Felucca's full synth UI underneath; SAVE with HOME held returns.
+Felucca's own UI, reachable here at first with HOME held, was removed later: the chord UI is the only one.
 
 ## What a setting does (the projection)
 

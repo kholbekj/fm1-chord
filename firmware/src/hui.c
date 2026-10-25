@@ -4,7 +4,7 @@
  * the tempo; the keys as a keyboard; the sound and its effects) and the menus, colour-coded, each a few pages of
  * four cards after JIANT (KNOB 1..4 the four cards): KEY (SCL, grey), SOUND (FX, yellow: the tone and the effects),
  * MIX (GLO: the levels, the tempo, the setup), LOOPER (SEQ) and PRESETS (SAVE: P1..P4); EDIT steps the play style,
- * whose own settings are HOME's knobs. Felucca's own UI stays underneath (HOME held: the advanced synth; SAVE + HOME: back).
+ * whose own settings are HOME's knobs.
  *   SELECT    a menu's pages (PRESETS: the slot); on HOME the key
  *   a menu's  tapped: into its menu, on the page left there; tapped again: the next page, round (PRESETS the next
  *   button    slot, LOOPER back HOME); EDIT tapped: the next play style; held: its layer (keys and knobs)
@@ -14,8 +14,8 @@
  *             RANDOMIZE (ALL; the sound on SOUND, the pattern on MODE)
  *   ALGORITHM the layer, PRESETS the sound: on every screen, their list shown while they turn
  *   ENV / LFO SOUND's AMP / WOBBLE page (again: HOME); ARP: the play style before (EDIT the next)
- * Included after Felucca's ui*.c (it uses their drawing, sounds and projects); ui_input / ui_draw / ui_leds
- * hand over to hui_* while hui.on. */
+ * Included after ui.c (its sounds, messages and projects) and project.c; main.c runs hui_input, hui_leds and
+ * hui_draw every frame. */
 
 /* ------------------------------------------------------------ colours --- */
 /* every colour from the palette (tools/gen_ui_palettes.py: the roles and the degrees), so a theme is one row there */
@@ -132,11 +132,7 @@ static int hui_paged(uint32_t sc) { return sc < HU_N && HU_SEC[sc].title != 0; }
 static const char *const HC_OUT_NAME[2] = {"HOT", "LINE"};
 static const char *const HC_SPK_NAME[3] = {"FLAT", "LOWCUT", "BASS+"};
 
-#ifndef HUI_DEFAULT
-#define HUI_DEFAULT 1                                   /* the chord machine UI at power-on (the host tests: 0) */
-#endif
 static struct {
-    uint8_t on;                  /* the chord machine UI is up (0: Felucca's) */
     uint8_t screen;              /* HU_* */
     uint8_t page[HU_N];          /* the page each menu was left on */
     uint8_t slot;                /* PRESETS: P1..P4 */
@@ -162,34 +158,8 @@ static struct {
     uint8_t ly_page;             /* SOUND held: the page of 16 sounds on the keys */
     uint32_t ly_ms;              /* when it went down */
     uint32_t ly_seen;            /* the layer's keys already taken (seq.c kb_layer) */
-} hui = {.on = HUI_DEFAULT, .rnd = 0x9E3779B9u};
-static int hui_active(void) { return hui.on; }
+} hui = {.rnd = 0x9E3779B9u};
 static void hui_mode_set(track_t *t, uint32_t play);   /* below: the mode, with the drum engine swap */
-/* HOME is still down across a handover: the side taking over sees it as already held (a hold, done), so letting
- * go is no tap and holding on fires nothing; the side left keeps no stale press */
-#define HUI_HELD_DONE(now) ((((now) | 1u) & ~3u) | 3u)
-static void hui_resume(void)
-{
-    hui.on = 1;
-    hui.force = 1;
-    hui.home_t0 = (fm1_in.buttons >> panel.btn[B_HOME]) & 1u ? HUI_HELD_DONE(fm1_ticks()) : 0u;
-    ui.home_t0 = 0;                                     /* (Felucca's UI: no HOME press left over) */
-    ui.menu = 0;                                        /* (back to Felucca later: its plain screen, no menu) */
-    lcd_fill(0, 0, 240, 240, T_BG);
-}
-/* HOME held: Felucca's own UI, on its plain screen, saying the way back for a moment */
-static void hui_to_felucca(void)
-{
-    hui.on = 0;
-    ui.home = 1;
-    ui.menu = 0;
-    ui.force = 1;
-    ui.home_t0 = HUI_HELD_DONE(fm1_ticks());           /* (HOME still down: no tap, no menu, when it goes up) */
-    ui_message("HOME+SAVE: CHORDS");
-    ui.msg_t = 130;                                     /* (~2 s) */
-    lcd_fill(0, 0, 240, 240, T_BG);
-}
-
 static void hui_say(const char *s)
 {
     str_cpy(hui.msg, s, sizeof hui.msg);
@@ -1075,7 +1045,7 @@ static int hui_layer_input(uint32_t pressed)
 static void hui_input(void)
 {
     uint32_t pressed = fm1_input_edges(0), now = fm1_ticks(), i;
-    uint32_t home = btn_hold(&hui.home_t0, B_HOME, now, 1);
+    uint32_t home = btn_hold(&hui.home_t0, B_HOME, now, 0);
     hc_trk_t *c = hui_c();
     int32_t s;
     uint32_t sc = hui.screen, held;
@@ -1088,10 +1058,6 @@ static void hui_input(void)
     song.seq_mode = 0;
     hui_track_init(TSEL);
 #define DOWN(b) ((pressed >> panel.btn[b]) & 1u)
-    if (home == BT_HOLD) {                               /* HOME held: Felucca's own UI */
-        hui_to_felucca();
-        return;
-    }
     if (home == BT_TAP) {
         hui.screen = HU_HOME;
         hui.armed = 0;
@@ -1441,7 +1407,7 @@ static void hui_draw_foot(void)
                 const char *a = hint_word(&h[i], pass, i);
                 x = cv_keycap(x, 6, h[i].kc, h[i].fill, h[i].ink, T_BG);
                 if (a[0])
-                    x = cv_text_on(x + 3, 5, &AF_S, a, T_MID, T_BG);   /* (on the keycap centre line, as cv_key_hint) */
+                    x = cv_text_on(x + 3, 5, &AF_S, a, T_MID, T_BG);   /* (on the keycap centre line) */
                 x += gap;
             }
             break;
@@ -2251,6 +2217,7 @@ static void hui_draw_layer(void)
 
 static void hui_draw(void)
 {
+    hui.force |= ui.force;                               /* (a load, the editor, a cancelled update: ui.c) */
     if (hui.force)
         lcd_fill(0, 0, 240, 240, T_BG);
     if (hui.msg_t)

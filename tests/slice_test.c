@@ -29,10 +29,9 @@ static uint32_t host_slots[3u * 0x14000u / 4u];          /* USR1..3, as the flas
 #define SLC_ENG 13u                                      /* SLICE's engine number (engines.c, the protocol's) */
 
 /* 7: the store (src/slice_store.c) on the slot image: storage.c's hooks over host_slots, the UI's stubs */
-static uint8_t flash_ok = 1, host_busy, host_page, host_torn;
+static uint8_t flash_ok = 1, host_busy, host_torn;
 static char host_msg[32];
 static int transport_busy(void) { return host_busy; }
-static int slice_page_on(void) { return host_page; }
 static void ui_message(const char *s) { snprintf(host_msg, sizeof host_msg, "%s", s); }
 static uint32_t host_erases;
 static int st_read(uint32_t off, void *dst, uint32_t n) { (void)off; (void)dst; (void)n; return -1; }
@@ -638,17 +637,13 @@ int main(int argc, char **argv)
         slc_store_poll();
         ok &= host_erases == e0 && slc_man_save == 1u;     /* playing: waits */
         host_busy = 0;
-        host_page = 1;
-        slc_store_poll();
-        ok &= host_erases == e0 && slc_man_save == 1u;     /* the page still open: waits */
-        host_page = 0;
         slc_store_poll();
         ok &= host_erases == e0 + 1u && !slc_man_save && str_eq(host_msg, "SLICES SAVED") && r->magic == SLC_REC_MAGIC &&
               r->n == keep.n && r->end == keep.end && r->len == s->len && r->crc == h->crc;
         slc_man_save |= 1u;                                /* the same again: no erase */
         slc_store_poll();
         ok &= host_erases == e0 + 1u;
-        check("store: written once stopped and off the page, only when it changed (\"SLICES SAVED\")", ok, 0);
+        check("store: written once stopped, only when it changed (\"SLICES SAVED\")", ok, 0);
 
         ok = 1;
         smp_user_scan(0);                                  /* boot / the same sample uploaded again */

@@ -114,15 +114,6 @@ static int up_name_ok(const uint8_t *s, uint32_t n)   /* 1..12 printable ASCII *
     return 1;
 }
 
-static void up_name(uint32_t k, char *b)       /* upper case, 0-terminated: b holds 13 */
-{
-    const up_rec_t *r = up_rec(k);
-    uint32_t i;
-    for (i = 0; i < 12u && r->name[i]; i++)
-        b[i] = r->name[i] >= 'a' && r->name[i] <= 'z' ? (char)(r->name[i] - 32) : r->name[i];
-    b[i] = 0;
-}
-
 static void up_pat_norm(uint8_t *note, uint8_t *flags)   /* tie: no note; rest: no flags */
 {
     *note &= 127u;
@@ -142,15 +133,6 @@ static void up_pat_from(up_rec_t *r, const step_t *st)   /* the first 16 steps -
         r->flags[i] = st[i].time == ST_TIE ? 4u : st[i].flags;
         up_pat_norm(&r->note[i], &r->flags[i]);
     }
-}
-
-static int up_pat_empty(const up_rec_t *r)
-{
-    uint32_t i;
-    for (i = 0; i < 16u; i++)
-        if (r->note[i])
-            return 0;
-    return 1;
 }
 
 /* UP_PUT arguments: slot, engine, name, P_COUNT x v14, 16 x (note, flags) [, kind, 16 x hi] -> *r (values not
@@ -352,18 +334,6 @@ static int up_store(uint32_t k, const char *name)
     return up_put(k, &r);
 }
 
-/* slot k renamed (name 0 or "": the automatic one), the sound and its pattern as they are; up_put's result, 1 for
- * an empty slot */
-static int up_rename(uint32_t k, const char *name)
-{
-    up_rec_t r;
-    if (!up_used(k))
-        return 1;
-    r = *up_rec(k);
-    up_set_name(&r, k, name);
-    return up_put(k, &r);
-}
-
 /* slot k -> the selected part's sound: engine and every parameter except the track's own (param_kept:
  * the mix, ARP, SCL, the pattern parameters, the SLICER). The steps stay: the record's pattern is
  * loaded only from SEQ > PATTERNS (up_pat_load). 0 ok, 1 empty */
@@ -377,7 +347,7 @@ static int up_load(uint32_t k)
         return 1;
     r = up_rec(k);
     up_values(r, v);
-    load_begin(t, UNDO_SOUND);                          /* (ui.c: the copy for SAVE held = undo) */
+    load_begin(t);
     panic_req |= (uint8_t)(1u << song.sel);
 #if !FELUCCA_FM4
     if (r->engine == ENGI_DIGITAL) {                    /* a DIGITAL sound (kept as it was stored): FM6 */
@@ -404,111 +374,4 @@ static int up_load(uint32_t k)
     return 0;
 }
 
-/* the patterns of the user presets (SEQ > PATTERNS lists them after the factory ones, ui.c pat_count) */
-static int up_has_pat(uint32_t k) { return up_used(k) && !up_pat_empty(up_rec(k)); }
-
-static uint32_t up_pat_count(void)
-{
-    uint32_t k, n = 0;
-    for (k = 0; k < UP_SLOTS; k++)
-        n += (uint32_t)up_has_pat(k);
-    return n;
-}
-
-static uint32_t up_pat_nth(uint32_t n)         /* slot of the n-th one that holds a pattern (n < up_pat_count()) */
-{
-    uint32_t k;
-    for (k = 0; k < UP_SLOTS; k++)
-        if (up_has_pat(k) && !n--)
-            return k;
-    return 0;
-}
-
-static uint32_t up_pat_rank(uint32_t slot)     /* ones that hold a pattern before it */
-{
-    uint32_t k, n = 0;
-    for (k = 0; k < slot && k < UP_SLOTS; k++)
-        n += (uint32_t)up_has_pat(k);
-    return n;
-}
-
-/* slot k's pattern -> track t's steps 1..16 (the rest cleared), with the record's LEN (at most 16), DIV,
- * SWING and GATE; the sound stays (ui.c pat_load: the undo copy) */
-static void up_pat_load(track_t *t, uint32_t k)
-{
-    const up_rec_t *r;
-    int16_t v[P_COUNT];
-    uint32_t i;
-    if (!up_has_pat(k))
-        return;
-    r = up_rec(k);
-    up_values(r, v);
-    if (up_grid(r))
-        load_grid16(t, r->note, r->flags);
-    else
-        load_pat16(t, r->note, r->flags);
-    for (i = P_SDIV; i <= P_SGATE; i++)
-        t->p[i] = v[i];
-    t->p[P_SLEN] = (int16_t)clamp(v[P_SLEN], 1, 16);   /* (the pattern has 16 steps) */
-}
-
-/* the engine a used slot's sound plays on (a DIGITAL record: FM6, without FELUCCA_FM4) */
-static uint32_t up_engine(uint32_t k) { return eng_ok(up_rec(k)->engine) ? up_rec(k)->engine : ENGI_FM6; }
-
-static uint32_t up_count(void)                 /* used slots */
-{
-    uint32_t k, n = 0;
-    for (k = 0; k < UP_SLOTS; k++)
-        n += (uint32_t)up_used(k);
-    return n;
-}
-
-static uint32_t up_nth(uint32_t n)             /* slot of the n-th used one (n < up_count()) */
-{
-    uint32_t k;
-    for (k = 0; k < UP_SLOTS; k++)
-        if (up_used(k) && !n--)
-            return k;
-    return 0;
-}
-
-static uint32_t up_rank(uint32_t slot)         /* used slots before it */
-{
-    uint32_t k, n = 0;
-    for (k = 0; k < slot && k < UP_SLOTS; k++)
-        n += (uint32_t)up_used(k);
-    return n;
-}
-
-/* SAVE > USER page actions, with the message in the top bar. name: the save's or the rename's (0 or "": automatic) */
-static void up_ui_named(uint32_t op, uint32_t k, const char *name)   /* 0 load, 1 erase, 2 save, 3 rename */
-{
-    char l[4];
-    int rc;
-    up_slot_label(l, k);
-    if ((op < 2u || op == 3u) && !up_used(k)) {
-        ui_message("EMPTY SLOT");
-        return;
-    }
-    if (op && (song.playing || chain_busy() || transport_req == 1u)) {    /* (up_put refuses too) */
-        ui_message("STOP TO SAVE");
-        return;
-    }
-    if (op == 0u) {
-        up_load(k);
-        if (up_has_pat(k))                              /* SEQ > PATTERNS starts at its pattern */
-            ui.ppick = (uint8_t)(NPATTERNS + up_pat_rank(k));
-        ui_say("LOADED ", l);
-        return;
-    }
-    rc = op == 1u ? up_put(k, 0) : op == 3u ? up_rename(k, name) : up_store(k, name);
-    if (rc == 3)
-        ui_message(op == 1u ? "ERASED (RAM)" : op == 3u ? "RENAMED (RAM)" : "SAVED (RAM)");
-    else if (rc)
-        ui_message(op == 1u ? "ERASE ERROR" : "SAVE ERROR");
-    else
-        ui_say(op == 1u ? "ERASED " : op == 3u ? "RENAMED " : "SAVED ", l);
-    ui.force = 1;
-}
-static void up_ui(uint32_t op, uint32_t k) { up_ui_named(op, k, 0); }
 #endif

@@ -23,6 +23,8 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
 #include "../firmware/src/gfx.c"
 #include "../firmware/src/panel.c"
 #include "../firmware/src/ui.c"
+static char said[24];                                     /* the last message (on the device: hui.c hui_say) */
+static void hui_say(const char *s) { str_cpy(said, s, sizeof said); }
 static void panel_setup(void) {}
 
 static uint8_t nor[0x100000], flash_ok = 1;
@@ -182,18 +184,18 @@ int main(void)
     fail_after = 1;
     project_save(0);
     fail_after = -1;
-    bad += check("failed project save keeps RAM and old flash", !strcmp(ui.msg, "SAVE ERROR") &&
+    bad += check("failed project save keeps RAM and old flash", !strcmp(said, "SAVE ERROR") &&
                   !memcmp(&proj_slot[0], &old, sizeof old) && st_load(OBJ_PROJECT0, &got, sizeof got) == (int)sizeof got &&
                   !memcmp(&got, &old, sizeof got));
     project_save(0);
-    bad += check("successful project save publishes new RAM", !strcmp(ui.msg, "SAVED") &&
+    bad += check("successful project save publishes new RAM", !strcmp(said, "SAVED") &&
                   proj_import(&proj_scratch, &proj_slot[0], sizeof proj_slot[0]) &&
                   proj_scratch.t[0].step[0].note[0] == 72u && proj_ok(&proj_scratch));
     before = erases;
     transport_req = 1;
     project_save(1);
     bad += check("pending PLAY: project save leaves slot and flash", !project_used(1) && erases == before &&
-                  !strcmp(ui.msg, "STOP TO SAVE"));
+                  !strcmp(said, "STOP TO SAVE"));
     transport_req = 0;
     erase_error = 1;
     project_save(2);
@@ -208,20 +210,6 @@ int main(void)
         proj_fetch(0);
         bad += check("a project's name goes to flash and comes back", project_name(0, n) && !strcmp(n, "LOFI JAM") &&
                       !strcmp(proj_name, "LOFI JAM"));
-        keep = proj_slot[0];
-        fail_after = 1;
-        bad += check("failed project rename: SAVE ERROR, the slot and flash as they were",
-                      project_rename(0, "DUB") == 2 && !strcmp(ui.msg, "SAVE ERROR") && !memcmp(&proj_slot[0], &keep, sizeof keep) &&
-                      st_load(OBJ_PROJECT0, &got, sizeof got) == (int)sizeof got && !memcmp(&got, &keep, sizeof got));
-        fail_after = -1;
-        before = erases;
-        transport_req = 1;
-        bad += check("pending PLAY: no rename, no erase", project_rename(0, "DUB") == 1 && erases == before &&
-                      !strcmp(ui.msg, "STOP TO SAVE"));
-        transport_req = 0;
-        bad += check("project rename: flash has the new name, the music as it was", project_rename(0, "DUB") == 0 &&
-                      !strcmp(ui.msg, "RENAMED") && (memset(proj_slot[0].raw, 0, 8), proj_fetch(0), project_name(0, n)) &&
-                      !strcmp(n, "DUB") && proj_scratch.t[0].step[0].note[0] == st0.note[0]);
     }
     {   /* FUN7 itself refuses a step outside its fields: a damaged slot is empty, the tracks stay */
         step_t keep = trk[0].step[0];
@@ -230,9 +218,9 @@ int main(void)
         bad += check("damaged FUN7 slot (hash ok, n > 4) is refused", (memcpy(proj_slot[0].raw + PROJ_STORE_SIZE - 4,
                       &(uint32_t){proj_hash(proj_slot[0].raw, PROJ_STORE_SIZE - 4)}, 4), !project_used(0)));
         st_save(OBJ_PROJECT0, &proj_slot[0], sizeof proj_slot[0]);
-        ui.msg[0] = 0;
+        said[0] = 0;
         project_load(0);
-        bad += check("loading it says EMPTY SLOT and keeps the steps", !strcmp(ui.msg, "EMPTY SLOT") &&
+        bad += check("loading it says EMPTY SLOT and keeps the steps", !strcmp(said, "EMPTY SLOT") &&
                       !memcmp(&trk[0].step[0], &keep, sizeof keep));
         proj_slot[0] = old;
         st_save(OBJ_PROJECT0, &proj_slot[0], sizeof proj_slot[0]);

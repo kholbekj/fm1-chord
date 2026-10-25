@@ -7,8 +7,7 @@
  * LEADING, the PIANO layout, every scale, MONO plays the root, releases end exactly what a key started,
  * MIDI OUT balanced, and the name shown.
  * Run by tests/run_tests.sh (needs build/gen from one firmware build). */
-#define UI_TEST_NO_MAIN 1
-#include "ui_test.c"
+#include "ui_host.c"
 
 static int gate_note(const track_t *t, uint32_t note)
 {

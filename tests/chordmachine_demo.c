@@ -6,8 +6,7 @@
  *   build/host/chordmachine_demo OUT.wav
  * Built by hand (tests/run_tests.sh does not need it):
  *   cc -O1 -w -Ibuild/gen -Ifirmware/src -o build/host/chordmachine_demo tests/chordmachine_demo.c -lm */
-#define UI_TEST_NO_MAIN 1
-#include "ui_test.c"
+#include "ui_host.c"
 
 #define K_C4 7u
 #define K_D4 9u

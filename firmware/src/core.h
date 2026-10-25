@@ -292,8 +292,8 @@ typedef struct track {
 typedef struct {
     int16_t g[G_COUNT];
     uint8_t playing, seq_mode;
-    uint8_t grid;                /* 1: the keys are the DRUM grid (ui.c grid_on): only the lane keys play (seq.c);
-                                  * 2: NAME (ui_name.c): no key plays */
+    uint8_t grid;                /* 1: the keys are the DRUM grid: only the lane keys play (seq.c); 2: NAME: no key
+                                  * plays. Felucca's UI set them; the chord UI keeps 0 */
     uint8_t rec;                 /* live recording armed: bit per track */
     uint8_t sel;                 /* selected track 0..NTRK-1: keys, pages, editor */
     int8_t octave;

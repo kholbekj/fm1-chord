@@ -143,7 +143,7 @@ static void felucca_init(void)
     chain_defaults(&chain_config);
     for (i = 0; i < G_COUNT; i++)
         song.g[i] = GP[i].def;
-    undo_depth++;                             /* (no undo copy of the power-on loads) */
+    load_depth++;
     hc_init();                                /* the chord machine key layer (chordmachine.c) */
     fm6_init();                               /* every track's FM6 patch: the init voice */
     for (i = 0; i < NTRK; i++) {
@@ -155,13 +155,10 @@ static void felucca_init(void)
         track_defaults_steps(t);              /* (a sound load never touches them) */
         if (TRK_DEF[i][2])
             load_pat16(t, PATTERNS[TRK_DEF[i][2] - 1u].note, PATTERNS[TRK_DEF[i][2] - 1u].flags);
-        pat_sig[i] = steps_sig(t);            /* a default pattern, not the user's */
-        pat_last[i] = TRK_DEF[i][2];
     }
-    undo_depth--;
+    load_depth--;
     song.sel = 0;
     song.master_q12 = 2048;
-    ui.home = 1;
     ui.force = 1;
 }
 
@@ -240,24 +237,11 @@ static void fm1_main(void)
                 song.master_q12 = (k10 * k10) >> 8;            /* 0 .. ~4096 */
             }
         }
-        {   /* OCT- + OCT+ held 5 s: enter UBOOT with RAM intact (debug / update); a countdown
-             * shows from 2 s over the whole screen (the menu and the dialogs too: ui_draw), letting
-             * go cancels it */
+        {   /* OCT- + OCT+ held 5 s: enter UBOOT with RAM intact (debug / update) */
             static uint32_t t0;
             uint32_t both = (1u << panel.btn[B_OCTDN]) | (1u << panel.btn[B_OCTUP]);
             if ((fm1_in.buttons & both) != both) {
-                if (ui.uboot) {
-                    ui.uboot = 0;
-                    ui.force = 1;                       /* what the countdown covered */
-                    ui_message("UPDATE CANCELLED");
-                }
                 t0 = fm1_ms;
-            } else if (fm1_ms - t0 > 2000u && fm1_ms - t0 <= 5000u) {
-                uint32_t left = (5000u - (fm1_ms - t0) + 999u) / 1000u;
-                if (left != ui.uboot) {
-                    ui.uboot = (uint8_t)left;
-                    ui.force = 1;
-                }
             } else if (fm1_ms - t0 > 5000u) {
                 fm1_audio_stop();
                 lcd_fill(0, 0, 240, 240, T_BG);
@@ -299,17 +283,17 @@ static void fm1_main(void)
         cdc_task();
 #endif
         felucca_dbg.ui_frames++;
-        felucca_dbg.page = ui.page;
-        felucca_dbg.home = ui.home;
+        felucca_dbg.page = hui.screen;
+        felucca_dbg.home = hui.screen == HU_HOME;
         felucca_dbg.stage = 1;
-        ui_input();
+        hui_input();
         settings_poll();                              /* queued settings save: only while stopped */
         felucca_dbg.stage = 2;
-        ui_leds();
-        ui_draw();
+        hui_leds();
+        hui_draw();
         felucca_dbg.stage = 9;
         while (fm1_ms - m < 15u) {                               /* ~60 UI frames/s at most */
-            ui_input();
+            hui_input();
 #if FELUCCA_OTA
             ed_service();                       /* editor replies without waiting for the next frame */
 #endif

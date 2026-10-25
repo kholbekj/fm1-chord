@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* PERFORM: the effects of the FX hold layer, on the master. A key pressed while FX is held belongs to the
  * layer (seq.c keyboard_block): it plays no note, sends no MIDI, records nothing, and holds its effect until
- * it is let go (ui_input.c opens the layer and shows the map). The 10 white keys from the left (F3 .. A4):
+ * it is let go. Felucca's UI opened the layer; the chord UI (hui.c) has its own layers and keeps perf_mask 0. The 10 white keys from the left (F3 .. A4):
  *   REPEAT 1/8 1/16 1/32, REVERSE, LPF | HPF, TAPE STOP, FREEZE, OCT UP, OCT DN;  the other 6 white keys do
  *   nothing; black keys 1..4 (F#3 G#3 A#3 C#4): tracks 1..4 muted while held (not P_MUTE, never saved).
  * REPEAT and REVERSE start on the next 1/16 (at once while stopped); the others at once; all end when let go,
@@ -43,7 +43,7 @@ enum { PF_R8, PF_R16, PF_R32, PF_REV, PF_LPF, PF_HPF, PF_TAPE, PF_FRZ, PF_OUP, P
 enum { BM_NONE, BM_LOOP, BM_TAPE, BM_FRZ, BM_HARM };
 
 static volatile uint32_t perf_mask;   /* main: the FX button's bit while its layer may own keys, 0 = none */
-static volatile uint32_t kb_mask;     /* main: the button bits whose hold makes keys a layer's (ui_layer.c), 0 = none */
+static volatile uint32_t kb_mask;     /* main: the button bits whose hold makes keys a layer's (hui.c), 0 = none */
 static volatile uint8_t perf_solo;    /* main: tracks soloed in the GLO layer (the others muted as by a black key) */
 static volatile uint8_t perf_kill;    /* main: every effect off (the menu, a dialog, UBOOT) */
 static volatile int8_t perf_k[4];     /* main: the knob macros, 0 = untouched: FILTER -100..100 (- LPF, + HPF),

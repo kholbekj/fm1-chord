@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
  * Real sequencer/project/UI sources: motion lifecycle and compact migration. */
-#define UI_TEST_NO_MAIN 1
-#include "ui_test.c"
+#include "ui_host.c"
 
 static int motion_recording(void)
 {
@@ -176,9 +175,7 @@ static int loads_and_song(void)
     t->p[P_REV] = 21; motion_set_event(t, 0, P_REV, 100); t->step[0] = (step_t){{60}, 1, ST_NOTE, 0, 100};
     apply_preset_to(t, 1);
     bad += check("sound load clears incompatible motion and keeps pattern", !motion_count(t) && t->step[0].note[0] == 60);
-    undo_swap(); bad += check("sound undo restores the original motion pool and base", motion_count(t) == 1u && t->p[P_REV] == 21);
-    undo_swap(); bad += check("sound redo restores the loaded motion state", !motion_count(t));
-    undo_swap(); project_save(0);
+    t->p[P_REV] = 21; motion_set_event(t, 0, P_REV, 100); project_save(0);   /* (the motion again, saved) */
     t->p[P_REV] = 43; t->step[0].note[0] = 72; chain_config.count = 1; chain_config.row[0] = (chain_row_t){0, 1};
     bad += check("song preparation imports saved motion alongside steps", chain_prepare() == 0 && chain.source[0].motion.count == 1u);
     seq_start(); seq_tick(t, CTL);

@@ -46,15 +46,6 @@ static void panel_init(void)                     /* also after a flash load: ids
         panel = PANEL_DEFAULT;
 }
 
-static uint32_t panel_btn_of(uint32_t matrix_id)        /* label of a matrix button, NB if none */
-{
-    uint32_t b;
-    for (b = 0; b < NB; b++)
-        if (panel.btn[b] == matrix_id)
-            return b;
-    return NB;
-}
-
 /* steps of a role, + = clockwise */
 static int32_t panel_enc(uint32_t role)
 {
@@ -69,7 +60,7 @@ struct { uint32_t magic, palette, lowcut, zoom; } settings __attribute__((sectio
 
 static void settings_save(void);              /* project.c: flash copy (FELUCCA_FLASH) */
 
-/* HOLD (menu): how long a button is held before its layer opens (ui_input.c). Saved in the settings record's
+/* HOLD: how long a button was held before a layer of Felucca's UI opened; the editor still sets it. Saved in the settings record's
  * retired bold field as HOLD_TAG | index; any other value there (0 or 1 from older firmware) is the default */
 #define HOLD_TAG 0x484C4400u
 #define HOLD_DEF 1u
@@ -83,7 +74,7 @@ static uint32_t hold_to_stored(uint32_t old, uint32_t i)
 static int hold_stored_ok(uint32_t v) { return v <= 1u || (v & ~3u) == HOLD_TAG; }
 
 /* LEDS (menu): DIM, the idle buttons and keys glow dim and the active ones are lit (#35); INV, the idle ones
- * lit and the active ones dark, as the stock firmware (ui_input.c ui_leds). Saved in the settings record's retired zoom field
+ * lit and the active ones dark, as the stock firmware. Saved in the settings record's retired zoom field
  * as LEDS_TAG | mode; any other value there (0 or 1 from older firmware) is DIM */
 #define LEDS_TAG 0x4C454400u                    /* "LED" */
 enum { LEDS_DIM, LEDS_INV, LEDS_COUNT };
