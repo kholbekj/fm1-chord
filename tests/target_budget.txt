@@ -9,7 +9,7 @@ formant_render 312
 trio_render 341
 trio_pass 175
 wheel_render 267
-wheel_block 86
+wheel_block 102
 grain_render 1729
 grain_block 139
 phys_render 61
@@ -42,7 +42,7 @@ fm1_timer5_irq 32307
 mod_begin 158
 mod_voice 30
 mod_end 7
-perf_begin 28
+perf_begin 34
 perf_mute 21
 perf_pre 26
 perf_block 814
