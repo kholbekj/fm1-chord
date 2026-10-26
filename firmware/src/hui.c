@@ -52,6 +52,54 @@ static const hc_sound_t HC_SOUNDS[] = {
     {"DX ORGAN", ENGI_FM6, 6, HE_SUSTAIN},      {"DX PLUCK", ENGI_FM6, 7, HE_KEYS, 112},
 };
 #define HC_NSOUNDS (sizeof HC_SOUNDS / sizeof HC_SOUNDS[0])
+/* after them the FM6 patch bank (fm6_bank.c: DX7 patches the web editor put in B1..B27): sound HC_NSOUNDS + k is
+ * slot k, listed while it holds a patch, under the patch's own name. The list positions skip the empty slots */
+#define HC_NIDS (HC_NSOUNDS + FM6_BANK_N)
+static int hc_sound_ok(uint32_t id)
+{
+    return id < HC_NSOUNDS || (id < HC_NIDS && fm6_bank.magic == FM6_BANK_MAGIC && ((fm6_bank.used >> (id - HC_NSOUNDS)) & 1u));
+}
+static uint32_t hc_pos(uint32_t id)                     /* the list position of sound id (an empty slot: the next one's) */
+{
+    uint32_t i, n = 0;
+    for (i = 0; i < id && i < HC_NIDS; i++)
+        n += (uint32_t)hc_sound_ok(i);
+    return n;
+}
+static uint32_t hc_nshown(void) { return hc_pos(HC_NIDS); }
+static uint32_t hc_shown(uint32_t pos)                  /* the sound at list position pos (past the end: the last) */
+{
+    uint32_t i, last = 0;
+    for (i = 0; i < HC_NIDS; i++)
+        if (hc_sound_ok(i)) {
+            if (!pos--)
+                return i;
+            last = i;
+        }
+    return last;
+}
+static const char *hc_sound_name(uint32_t id)
+{
+    static char nm[FM6_BANK_N][11];                     /* the bank's names, trimmed; no name: its slot, "B5" */
+    uint32_t k, i, n = 0;
+    char *b;
+    if (id < HC_NSOUNDS || id >= HC_NIDS)
+        return HC_SOUNDS[id % HC_NSOUNDS].name;
+    k = id - HC_NSOUNDS;
+    b = nm[k];
+    for (i = 0; i < 10u; i++) {
+        uint8_t ch = fm6_bank.v[k][118u + i];           /* the packed voice's name (eng_fm6.c fm6_pack) */
+        b[i] = (char)(ch >= 32u && ch < 127u ? ch : ' ');
+        if (b[i] != ' ')
+            n = i + 1u;
+    }
+    b[n] = 0;
+    if (!hc_sound_ok(id) || !n) {
+        b[0] = 'B';
+        fmt_int(b + 1, (int32_t)k + 1);
+    }
+    return b;
+}
 /* the chord machine's ten scales (CC 103 order) -> Felucca's SCALE values */
 static const uint8_t HC_SCALE_V[10] = {1, 2, 7, 11, 5, 6, 12, 3, 4, 9};
 static const char *const HC_SCALE_NAME[10] = {"MAJOR", "MINOR", "HARM MIN", "MELOD MIN", "MAJ PEN", "MIN PEN", "BLUES",
@@ -251,14 +299,21 @@ static void hui_scale_set(uint32_t s)
 /* a sound of the list onto track t: its engine, its preset (ui.c), its envelope; the chord machine settings on top */
 static void hc_sound_load(track_t *t, uint32_t idx)
 {
-    const hc_sound_t *s = &HC_SOUNDS[idx % HC_NSOUNDS];
+    static const hc_sound_t BANK = {"", ENGI_FM6, 0, HE_KEYS};
+    const hc_sound_t *s;
     hc_trk_t *c = hc_of(t);
-    c->sound = (uint8_t)(idx % HC_NSOUNDS);
+    idx %= HC_NIDS;
+    s = idx < HC_NSOUNDS ? &HC_SOUNDS[idx] : &BANK;
+    c->sound = (uint8_t)idx;
     c->env = s->env;
     c->atk = c->rel = 0;
     set_engine_of(t, s->engine);
     if (s->preset)
         apply_preset_to(t, s->preset);
+    if (idx >= HC_NSOUNDS) {                            /* a bank slot: PTCH B1..B27 */
+        t->p[P_E7] = (int16_t)(FM6_NFACTORY + idx - HC_NSOUNDS);
+        fm6_track_loaded(t);
+    }
     t->p[P_LEVEL] = (int16_t)(s->level ? s->level : s->engine == ENGI_PHYS ? 127 : TP[P_LEVEL].def);   /* the physical models sit
                                                           * ~12 dB under the rest (3 voices): full level, no trim (fx.c) */
     hc_apply(t);
@@ -433,7 +488,7 @@ static void hui_preset_load(uint32_t slot)
 static void hui_random_sound(void)
 {
     hc_trk_t *c = hui_c();
-    hc_sound_load(TSEL, hui_rand(HC_NSOUNDS));
+    hc_sound_load(TSEL, hc_shown(hui_rand(hc_nshown())));
     c->env = (uint8_t)hui_rand(HE_COUNT);
     c->rev = (uint8_t)(hui_rand(3) ? hui_rand(HRV_COUNT) : 0);
     c->dly = (uint8_t)(hui_rand(3) == 0 ? hui_rand(HDL_COUNT) : 0);
@@ -728,17 +783,17 @@ static void hui_rec_tap(void)
 /* The lists (HU_PICK): the sounds and the layers, shown over the screen while the PRESETS / ALGORITHM knob turns
  * and gone 1.5 s after (or at a press) */
 enum { PK_SOUND, PK_LAYER };
-static uint32_t hui_pick_count(uint32_t k) { return k == PK_SOUND ? (uint32_t)HC_NSOUNDS : NTRK; }
+static uint32_t hui_pick_count(uint32_t k) { return k == PK_SOUND ? hc_nshown() : NTRK; }
 static const char *hui_pick_name(uint32_t k, uint32_t i)
 {
-    return k == PK_SOUND ? HC_SOUNDS[i % HC_NSOUNDS].name : HC_SOUNDS[hc.t[i % NTRK].sound % HC_NSOUNDS].name;
+    return hc_sound_name(k == PK_SOUND ? hc_shown(i) : hc.t[i % NTRK].sound);
 }
-static uint32_t hui_pick_cur(uint32_t k) { return k == PK_SOUND ? hui_c()->sound : song.sel; }
+static uint32_t hui_pick_cur(uint32_t k) { return k == PK_SOUND ? hc_pos(hui_c()->sound) : song.sel; }
 static void hui_pick_move(int32_t s)                    /* (SELECT while a list shows: its choice) */
 {
     uint32_t k = hui.pick_kind, i = (uint32_t)clamp((int32_t)hui_pick_cur(k) + s, 0, (int32_t)hui_pick_count(k) - 1);
     if (k == PK_SOUND)
-        hc_sound_load(TSEL, i);
+        hc_sound_load(TSEL, hc_shown(i));
     else
         track_select(i);
     hui.pick_ms = fm1_ms;
@@ -834,7 +889,7 @@ static const char *const HL_TITLE[HL_N] = {"", "KEY", "SOUND", "MODE", "MIX", "P
 static const uint8_t HL_ROLE[HL_N] = {0, UR_KEY, UR_SOUND, UR_MODE, UR_LOOP, UR_PRESET};
 #define HL_OPEN_MS 250u                                  /* held this long alone: the map */
 #define HL_TAP_MS 600u                                   /* let go sooner, nothing else touched: a tap */
-#define HL_PAGES ((HC_NSOUNDS + 15u) / 16u)
+#define HL_PAGES ((hc_nshown() + 15u) / 16u)
 static uint32_t hl_bit(uint32_t l) { return 1u << panel.btn[HL_BTN[l % HL_N]]; }
 static uint32_t hl_bits(void)
 {
@@ -858,10 +913,10 @@ static uint32_t hl_tile(uint32_t l, uint32_t w, char *b)
         return (uint32_t)TSEL->p[P_ROOT] % 12u == HL_WSEMI[w % 7u] ? 2u : 1u;
     case HL_SOUND:
         i = hui.ly_page * 16u + w;
-        if (i >= HC_NSOUNDS)
+        if (i >= hc_nshown())
             return 0;
-        str_cpy(b, HC_SOUNDS[i].name, 16);
-        return c->sound == i ? 2u : 1u;
+        str_cpy(b, hc_sound_name(hc_shown(i)), 16);
+        return c->sound == hc_shown(i) ? 2u : 1u;
     case HL_MODE:
         if (w >= HU_NSTYLES)
             return 0;
@@ -929,8 +984,8 @@ static void hl_key(uint32_t l, uint32_t k)
         break;
     case HL_SOUND:
         i = hui.ly_page * 16u + w;
-        if (w < 16u && i < HC_NSOUNDS)
-            hc_sound_load(TSEL, i);
+        if (w < 16u && i < hc_nshown())
+            hc_sound_load(TSEL, hc_shown(i));
         break;
     case HL_MODE:
         if (w < HU_NSTYLES)
@@ -1131,7 +1186,7 @@ static void hui_input(void)
         hui_pick_open(PK_LAYER);
     }
     if ((s = panel_enc(EN_PRESET)) != 0) {               /* the sound, its list shown while the knob turns */
-        hc_sound_load(TSEL, hui_cycle(c->sound, s, HC_NSOUNDS));
+        hc_sound_load(TSEL, hc_shown(hui_cycle(hc_pos(c->sound), s, hc_nshown())));
         hui_pick_open(PK_SOUND);
     }
     if (!held && hui_paged(sc == HU_PICK ? hui.pick_back : sc)) {   /* KNOB 1..4 on a menu: its four cards */
@@ -1451,7 +1506,7 @@ static void hui_draw_mode_body(void)
         cv_blit(0, HU_HEAD);
         cv_begin(240, HU_KNOBS_Y - HU_HEAD - 124, T_BG);
         cv_text_on(4, 2, &AF_S, "KEYS WRITE   F#3 REST   PLAY RUNS", T_MID, T_BG);
-        cv_text_on(4, 26, &AF_M, HC_SOUNDS[c->sound % HC_NSOUNDS].name, HC_YELLOW, T_BG);
+        cv_text_on(4, 26, &AF_M, hc_sound_name(c->sound), HC_YELLOW, T_BG);
         cv_blit(0, HU_HEAD + 124);
         return;
     }
@@ -1541,7 +1596,7 @@ static void hui_draw_mode_body(void)
         cv_blit(0, HU_HEAD);
         cv_begin(240, HU_KNOBS_Y - HU_HEAD - 124, T_BG);
         cv_text_on(4, 2, &AF_S, "PLAY STARTS AND STOPS THE SONG", T_MID, T_BG);
-        cv_text_on(4, 26, &AF_M, HC_SOUNDS[c->sound % HC_NSOUNDS].name, HC_YELLOW, T_BG);
+        cv_text_on(4, 26, &AF_M, hc_sound_name(c->sound), HC_YELLOW, T_BG);
         cv_blit(0, HU_HEAD + 124);
         return;
     }
@@ -1581,7 +1636,7 @@ static void hui_draw_mode_body(void)
         cv_blit(0, HU_HEAD);
         cv_begin(240, HU_KNOBS_Y - HU_HEAD - 124, T_BG);
         cv_text_on(4, 2, &AF_S, "F#3 REPLAYS   PLAY: A NEW ROUND", T_MID, T_BG);
-        cv_text_on(4, 26, &AF_M, HC_SOUNDS[c->sound % HC_NSOUNDS].name, HC_YELLOW, T_BG);
+        cv_text_on(4, 26, &AF_M, hc_sound_name(c->sound), HC_YELLOW, T_BG);
         cv_blit(0, HU_HEAD + 124);
         return;
     }
@@ -1908,7 +1963,7 @@ static void hui_draw_home(void)
     }
     {
         /* the sound and its effects */
-        cv_text_on(4, 59, &AF_M, HC_SOUNDS[c->sound % HC_NSOUNDS].name, HC_YELLOW, T_BG);
+        cv_text_on(4, 59, &AF_M, hc_sound_name(c->sound), HC_YELLOW, T_BG);
         {
             static const char *const CHIP[12] = {"REV", "DLY", "CHO", "FLG", "TRM", "LFO", "GLD", "DRV", "TAPE", "FLT", "HP", "ST"};
             int32_t x = 236;

@@ -1105,6 +1105,34 @@ static int test_fm6_sounds(void)
     return bad;
 }
 
+/* the FM6 patch bank in the list: a filled slot after the DX sounds under its patch's name, loaded as PTCH B..; the
+ * empty slots skipped; an erased one gone from the list */
+static int test_fm6_bank(void)
+{
+    int bad = 0;
+    track_t *t = &trk[0];
+    uint8_t pk[FM6_PACKED];
+    hui_power_on();
+    memcpy(pk, FM6_FACTORY[1], FM6_PACKED);
+    memcpy(pk + 118, "My Bell   ", 10);
+    bad += check("FM6 bank: an empty bank adds no sounds", hc_nshown() == HC_NSOUNDS);
+    bad += check("  a patch into B3", !fm6_bank_put(2, pk) && hc_nshown() == HC_NSOUNDS + 1u);
+    bad += check("  listed last, under its own name", hc_shown(HC_NSOUNDS) == HC_NSOUNDS + 2u &&
+                 str_eq(hc_sound_name(HC_NSOUNDS + 2u), "My Bell") && str_eq(hui_pick_name(PK_SOUND, HC_NSOUNDS), "My Bell"));
+    hc_sound_load(t, HC_NSOUNDS - 1u);
+    turn(EN_PRESET, 1);
+    hframes(2);
+    bad += check("  the PRESETS knob reaches it: FM6 on PTCH B3", hc.t[0].sound == HC_NSOUNDS + 2u &&
+                 t->eng_req == ENGI_FM6 && t->p[P_E0 + 7] == (int16_t)(FM6_NFACTORY + 2u) && fm6_slot[0] == FM6_NFACTORY + 2u &&
+                 !memcmp(fm6_patch[0] + FP_NAME, "My Bell", 7));
+    turn(EN_PRESET, 1);
+    hframes(2);
+    bad += check("  and goes round to SINE", hc.t[0].sound == 0u);
+    bad += check("  erased: gone from the list", !fm6_bank_put(2, 0) && hc_nshown() == HC_NSOUNDS &&
+                 str_eq(hc_sound_name(HC_NSOUNDS + 2u), "B3"));
+    return bad;
+}
+
 /* the preset record: HCP4 fits its 256 bytes (a guard byte after it stays), an HCP3 record (a byte an inversion; its
  * last 6 bytes were never stored) loads with those as 0 */
 static int test_preset_format(void)
@@ -1155,7 +1183,7 @@ int main(void)
 {
     int bad = test_slash_first_thing() + test_boot_and_menus() + test_key_menu() + test_sound_menu() + test_mix_menu() + test_mode_menu_knobs() + test_presets() +
               test_draw_and_handover() + test_looper() + test_seq_drums_mixer() + test_games() + test_live_persist() +
-              test_fx_amount() + test_drums_under_chords() + test_layers() + test_loop_kept() + test_footer_fits() + test_preset_format() + test_fm6_sounds();
+              test_fx_amount() + test_drums_under_chords() + test_layers() + test_loop_kept() + test_footer_fits() + test_preset_format() + test_fm6_sounds() + test_fm6_bank();
     printf("%s\n", bad ? "HUI TEST FAILED" : "chord machine ui test passed");
     return bad != 0;
 }

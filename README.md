@@ -18,7 +18,7 @@ first is the bass and the next one the chord: Em/C.
 **Everything else a chord machine does:** Play, Strum, Lead, Drone, Arp, Repeat, a 16-step chord
 sequencer, drum pads, 56 drum loops, a 4-layer looper, a mixer, Chord Hiro and the Ear Trainer; 45 sounds
 (36 classic ones, an acoustic guitar for leads, and eight six-operator FM patches, DX TINE EP to DX PLUCK, which play
-their own envelopes),
+their own envelopes; DX7 patches you put in the web editor's FM6 bank join the list under their own names),
 7 envelope presets, reverb, delay, chorus, flanger, tremolo, vibrato, glide, drive, tape, stereo, a filter
 wheel; key, scale, bass, voices, voice leading; four presets; MIDI in and out. Only the mic features and
 Bluetooth are missing.
